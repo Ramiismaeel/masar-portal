@@ -32,13 +32,9 @@ enum ApplicationStatus {
   NEEDS_REVISION
 }
 
-
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
-  passwordHash    String
-  emailVerifiedAt DateTime?
-  fullName        String?
   phone           String?
   birthDate       DateTime?
   nationality     String?
@@ -47,27 +43,32 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  applications    Application[]
+  applications Application[]
+
+  name          String
+  emailVerified Boolean   @default(false)
+  image         String?
+  sessions      Session[]
+  accounts      Account[]
 
   @@map("users")
 }
 
-
 model Application {
-  id String @id @default(uuid())
-  userId String 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category VisaCategory
-  status ApplicationStatus @default(DRAFT)
-  currentStep Int @default(0)
-  fullNameLatin String?
+  id             String            @id @default(uuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category       VisaCategory
+  status         ApplicationStatus @default(DRAFT)
+  currentStep    Int               @default(0)
+  fullNameLatin  String?
   passportNumber String?
   passportExpiry DateTime?
-  data Json @default("{}")
-  submittedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  documents Document[]
+  data           Json              @default("{}")
+  submittedAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  documents      Document[]
 
   @@index([userId])
   @@map("applications")
@@ -87,22 +88,71 @@ enum ReviewStatus {
   NEEDS_REVISION
 }
 
-
 model Document {
-  id String @id @default(uuid())
-  applicationId String 
-  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  id              String       @id @default(uuid())
+  applicationId   String
+  application     Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   requirementCode String
-  fileName String
-  storageKey String
-  mimeType String
-  sizeBytes Int
-  scanStatus ScanStatus @default(PENDING)
-  reviewStatus ReviewStatus @default(PENDING)
-  adminNote String?
-  version Int @default(1)
-  uploadedAt DateTime @default(now())
+  fileName        String
+  storageKey      String
+  mimeType        String
+  sizeBytes       Int
+  scanStatus      ScanStatus   @default(PENDING)
+  reviewStatus    ReviewStatus @default(PENDING)
+  adminNote       String?
+  version         Int          @default(1)
+  uploadedAt      DateTime     @default(now())
 
-  @@index([applicationId])  
+  @@index([applicationId])
   @@map("documents")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id
+  issuer                String
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([issuer, accountId], map: "account_issuer_accountId_uidx")
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
 }
