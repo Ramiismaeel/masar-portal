@@ -1,0 +1,108 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum VisaCategory {
+  STUDENT
+  JOB_SEEKER
+  MEDICAL
+  AUSBILDUNG
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  fullName        String?
+  phone           String?
+  birthDate       DateTime?
+  nationality     String?
+  role            Role      @default(USER)
+  locale          String    @default("en")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  applications    Application[]
+
+  @@map("users")
+}
+
+
+model Application {
+  id String @id @default(uuid())
+  userId String 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category VisaCategory
+  status ApplicationStatus @default(DRAFT)
+  currentStep Int @default(0)
+  fullNameLatin String?
+  passportNumber String?
+  passportExpiry DateTime?
+  data Json @default("{}")
+  submittedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  documents Document[]
+
+  @@index([userId])
+  @@map("applications")
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+
+model Document {
+  id String @id @default(uuid())
+  applicationId String 
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  requirementCode String
+  fileName String
+  storageKey String
+  mimeType String
+  sizeBytes Int
+  scanStatus ScanStatus @default(PENDING)
+  reviewStatus ReviewStatus @default(PENDING)
+  adminNote String?
+  version Int @default(1)
+  uploadedAt DateTime @default(now())
+
+  @@index([applicationId])  
+  @@map("documents")
+}
