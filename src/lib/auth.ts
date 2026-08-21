@@ -13,6 +13,11 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    // Closes the signup enumeration leak. With this false, better-auth returns a
+    // synthetic user + token: null for duplicate signups, hashes a throwaway
+    // password to equalise timing, and never 422s. Side effect: signup no longer
+    // issues a session — that's why the signup page changes below.
+    autoSignIn: false,
     sendResetPassword: async ({ user, url }) => {
       const { subject, html } = resetPasswordEmail({
         name: user.name,
@@ -38,6 +43,7 @@ export const auth = betterAuth({
   },
 
   emailVerification: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {

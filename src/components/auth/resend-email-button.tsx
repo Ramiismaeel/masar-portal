@@ -16,7 +16,7 @@ export function ResendEmailButton({ email }: { email: string }) {
     try {
       const { error } = await authClient.sendVerificationEmail({
         email,
-        callbackURL: "/dashboard",
+        callbackURL: "/verify-email",
       });
 
       if (error) {
