@@ -54,6 +54,7 @@ model User {
   @@map("users")
 }
 
+
 model Application {
   id             String            @id @default(uuid())
   userId         String
@@ -70,7 +71,16 @@ model Application {
   updatedAt      DateTime          @updatedAt
   documents      Document[]
 
-  @@index([userId])
+  // "One application per category per user", enforced by the database.
+  // A check-then-insert in the Server Action is not enough: two rapid taps can
+  // both pass the check before either row lands. Only this constraint cannot
+  // lose that race.
+  //
+  // This REPLACES @@index([userId]). A composite index is usable for queries
+  // that filter on a leading subset of its columns, so lookups by userId alone
+  // (the dashboard list) are still indexed. Keeping both would mean maintaining
+  // a second index on every write for nothing.
+  @@unique([userId, category])
   @@map("applications")
 }
 

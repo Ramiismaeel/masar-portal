@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ResendEmailButton } from "@/components/auth/resend-email-button";
@@ -21,7 +22,11 @@ export default async function DashboardLayout({
     <div className="min-h-screen bg-background">
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <span className="font-semibold">Masar Portal</span>
+          <Link href="/">
+            <span className="text-lg font-semibold text-foreground">
+              Masar Portal
+            </span>
+          </Link>
 
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">
