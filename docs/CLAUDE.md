@@ -48,3 +48,15 @@ If you find Claude ever skipping the read, switch the two bullets to real import
 ```
 
 That guarantees loading, at the cost of context on every session.
+
+## 0. Read before anything else
+
+Before answering or touching code, read:
+
+1. `docs/roadmap.md` — current phase, progress, and every architectural and security
+   decision already made. Do not re-litigate decisions recorded there.
+2. `docs/checklists-and-wizard.md` — the document checklist model and the two wizard
+   answers that drive it.
+
+These two files are the project's memory across sessions. When a phase closes or a
+decision changes, update `docs/roadmap.md` in the same session.

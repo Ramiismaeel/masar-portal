@@ -24,7 +24,7 @@ export function resetPasswordEmail({
       <p style="font-size: 13px; word-break: break-all; color: #555;">${url}</p>
 
       <p style="font-size: 14px; color: #555;">
-        This link expires in 7 days.
+        This link expires in 1 hour.
       </p>
 
       <p style="font-size: 14px; color: #555;">

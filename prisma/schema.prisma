@@ -113,7 +113,17 @@ model Document {
   version         Int          @default(1)
   uploadedAt      DateTime     @default(now())
 
-  @@index([applicationId])
+  // One row per requirement per application. A re-upload REPLACES this row
+  // (storageKey swapped, version incremented) rather than adding a second
+  // one — otherwise checklistProgress()'s uploadedCodes check still works,
+  // but _count.documents on the dashboard would over-count, and the old R2
+  // object would be orphaned (paying storage forever for a superseded file).
+  //
+  // This REPLACES @@index([applicationId]) for the same reason the
+  // Application model's composite unique does: a composite index is usable
+  // for a leading-column lookup, so "all documents for this application" is
+  // still indexed.
+  @@unique([applicationId, requirementCode])
   @@map("documents")
 }
 
