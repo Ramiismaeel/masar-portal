@@ -52,13 +52,18 @@ Any page added under `(app)` is protected by construction.
       route groups.
 - [x] **Deployment** — Vercel prod + preview, custom domain, split databases, `postinstall:
       prisma generate`, `build: prisma migrate deploy && next build`.
-- [~] **Phase 4 (partial)** `src/lib/checklists.ts` written — requirement config, `optional()`,
-      `requirementsFor()`, `checklistProgress()`, `findRequirement()`.
-- [ ] **Phase 2.1** ← IN PROGRESS. (a) verification-link expiry, (b) public `/verify-email`
-      landing page with four states, (c) close the **signup enumeration leak**
-      (`autoSignIn: false` + `onExistingUserSignUp`) and rework the signup success UI.
-- [ ] **Phase 3** ← CURRENT. Home page `/`, category picker → creates `Application`
-      (Server Action + `emailVerified` gate), wizard, applications list on dashboard.
+- [x] **Phase 2.1** (a) verification-link expiry (7 days), (b) public `/verify-email` landing
+      page with all four states, (c) signup enumeration leak closed (`autoSignIn: false`) and
+      signup reworked to an in-place "check your inbox" panel instead of redirecting to a
+      dashboard it can no longer create a session for.
+- [~] **Phase 3 (mostly built)** Home page `/`, category picker, `createApplication` Server
+      Action (`emailVerified` gate, one-per-category via `P2002`), two-step wizard (identity +
+      category question) with ownership checks and DRAFT-only edit gating, dashboard listing
+      applications. **Missing:** the wizard's `afterWizardPath` still sends users to
+      `/dashboard` — no checklist page exists yet to send them to (see Phase 4).
+- [~] **Phase 4 (partial)** `src/lib/checklists.ts` written and matches the finalized spec —
+      requirement config, `optional()`, `requirementsFor()`, `checklistProgress()`,
+      `findRequirement()`. **Not yet wired to any page** — nothing calls these functions.
 - [ ] **Phase 5** Uploads: validate → Cloudmersive → R2.
 - [ ] **Phase 6** Admin dashboard: review, per-file notes, notification emails.
 - [ ] **Phase 7** i18n (EN/AR) & PWA.
@@ -66,12 +71,11 @@ Any page added under `(app)` is protected by construction.
 - [ ] **Phase 9** API docs for the mobile app.
 
 ## Immediate next steps
-1. `/` home page — four category cards, 3-step explainer, session-aware CTA. Pure frontend.
-2. Category picker → **Server Action** creating an `Application` row.
-   Server-side gate: `if (!session.user.emailVerified) return { error: … }`.
-   UI shows a disabled picker; the server check is the real control.
-3. Wizard (multi-step, save & continue, `currentStep`, answers into `data` JSON).
-4. Applications list on the dashboard.
+1. Build `/applications/[id]` — the checklist page. Call
+   `requirementsFor(category, parseAnswers(application.data))` from `checklists.ts` and render
+   the resulting list. No uploads yet (Phase 5) — this page just shows what is required and
+   why, and closes the `afterWizardPath` TODO in `src/lib/actions/wizard.ts`.
+2. Point `afterWizardPath` at that page once it exists.
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
