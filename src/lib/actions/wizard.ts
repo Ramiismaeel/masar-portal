@@ -31,7 +31,7 @@ export type { WizardStepState };
  * common serious bug in apps like this (IDOR: change the id in the URL, read
  * someone else's visa file).
  */
-async function loadOwnedApplication(applicationId: unknown) {
+export async function loadOwnedApplication(applicationId: unknown) {
   if (typeof applicationId !== "string" || applicationId.length === 0) {
     return null;
   }
@@ -58,8 +58,7 @@ async function loadOwnedApplication(applicationId: unknown) {
 
 /** Where the user goes once every step is answered. */
 function afterWizardPath(applicationId: string) {
-  // TODO(Phase 4): this becomes the checklist page /applications/[id].
-  return `/dashboard?application=${applicationId}`;
+  return `/applications/${applicationId}`;
 }
 
 // ---------------------------------------------------------------------------

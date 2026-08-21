@@ -60,9 +60,10 @@ export default async function WizardPage({
 
   const category = findCategory(application.category)!;
 
-  // A submitted application is read-only.
+  // A submitted application is read-only — the checklist page is the correct
+  // place for it now, not the wizard.
   if (application.status !== "DRAFT") {
-    redirect(`/dashboard?application=${application.id}`);
+    redirect(`/applications/${application.id}`);
   }
 
   const total = totalSteps(category.value);

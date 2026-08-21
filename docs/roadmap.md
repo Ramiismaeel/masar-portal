@@ -56,26 +56,71 @@ Any page added under `(app)` is protected by construction.
       page with all four states, (c) signup enumeration leak closed (`autoSignIn: false`) and
       signup reworked to an in-place "check your inbox" panel instead of redirecting to a
       dashboard it can no longer create a session for.
-- [~] **Phase 3 (mostly built)** Home page `/`, category picker, `createApplication` Server
-      Action (`emailVerified` gate, one-per-category via `P2002`), two-step wizard (identity +
-      category question) with ownership checks and DRAFT-only edit gating, dashboard listing
-      applications. **Missing:** the wizard's `afterWizardPath` still sends users to
-      `/dashboard` — no checklist page exists yet to send them to (see Phase 4).
-- [~] **Phase 4 (partial)** `src/lib/checklists.ts` written and matches the finalized spec —
-      requirement config, `optional()`, `requirementsFor()`, `checklistProgress()`,
-      `findRequirement()`. **Not yet wired to any page** — nothing calls these functions.
-- [ ] **Phase 5** Uploads: validate → Cloudmersive → R2.
+- [x] **Phase 3** Home page `/`, category picker, `createApplication` Server Action
+      (`emailVerified` gate, one-per-category via `P2002`), two-step wizard (identity + category
+      question) with ownership checks and DRAFT-only edit gating, dashboard listing applications.
+- [x] **Phase 4** `src/lib/checklists.ts` — requirement config, `optional()`, `requirementsFor()`,
+      `checklistProgress()`, `findRequirement()`. Wired into `/applications/[id]`.
+- [x] **Phase 5** Uploads: validate → Cloudmersive → R2. See "Uploads" below for the pipeline,
+      the replace/versioning decision, and what's still missing (delete, admin review, submit
+      hasn't been exercised for real — see Immediate next steps).
 - [ ] **Phase 6** Admin dashboard: review, per-file notes, notification emails.
 - [ ] **Phase 7** i18n (EN/AR) & PWA.
 - [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
 - [ ] **Phase 9** API docs for the mobile app.
 
 ## Immediate next steps
-1. Build `/applications/[id]` — the checklist page. Call
-   `requirementsFor(category, parseAnswers(application.data))` from `checklists.ts` and render
-   the resulting list. No uploads yet (Phase 5) — this page just shows what is required and
-   why, and closes the `afterWizardPath` TODO in `src/lib/actions/wizard.ts`.
-2. Point `afterWizardPath` at that page once it exists.
+1. Confirm submission end-to-end: click "Submit application" for real on a fully-uploaded
+   application and verify it moves to `PENDING_REVIEW`. Not yet done — there is no "revert to
+   draft" action, so testing this makes a real, currently one-way status change.
+2. Decide whether a "delete document" action is needed before Phase 6, or whether replace
+   (upload again) is enough for launch — not built either way yet.
+3. Phase 6: admin dashboard. Nothing on the review side exists — `reviewStatus` and `adminNote`
+   are columns with no UI reading or writing them yet.
+
+Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
+`medicalProfession` (Medical). Everything else is information for staff.
+
+## Uploads (Phase 5, Aug 2026)
+- Pipeline is synchronous and enforced in one Server Action (`src/lib/actions/documents.ts`):
+  validate (size/mime) → Cloudmersive scan → R2 `PutObject` → `Document` upsert. Nothing is
+  written to R2 and no `Document` row is created unless the scan comes back clean — an infected
+  or unscannable file leaves no trace beyond a server log line.
+- **`Document` now has `@@unique([applicationId, requirementCode])`** (migration
+  `document_requirement_unique`) — one row per requirement per application, not per upload. A
+  re-upload is an **upsert**: `version` increments, `reviewStatus` resets to `PENDING`,
+  `adminNote` clears (a new file makes any note on the old one stale), and the superseded R2
+  object is deleted after the new row commits — GDPR minimisation, not just tidiness. This
+  replaced the plain `@@index([applicationId])` the same way `Application`'s composite unique
+  did; still indexed for "all documents on this application" lookups.
+- **Upload/replace is allowed in `DRAFT`, `REJECTED`, `NEEDS_REVISION`** — `canUploadInStatus()`
+  in `src/lib/uploads.ts`. `PENDING_REVIEW` and `APPROVED` lock the checklist (no upload
+  controls render at all). This is the practical reading of the security-rules line below:
+  DRAFT is the pre-submission case the rule doesn't explicitly name because nothing has been
+  rejected yet.
+- **Policy**: PDF/JPEG/PNG only, 10 MB max (`src/lib/uploads.ts`). Extension in the R2 key comes
+  from the validated mime type, never the client's filename — confirmed live: a `.txt` renamed
+  through a raw file-input assignment (bypassing the `<input accept>` UX hint entirely) was
+  correctly rejected server-side with no `Document` row created.
+- **R2 endpoint gotcha**: `S3_ENDPOINT` in `.env` is the full bucket URL
+  (`https://<account>.r2.cloudflarestorage.com/<bucket>`), not just the host. `src/lib/r2.ts`
+  takes `new URL(S3_ENDPOINT).origin` before handing it to `S3Client` — passing the full URL
+  through as-is would double the bucket segment on every request path, since `S3Client` appends
+  `S3_BUCKET` itself. `forcePathStyle: true` per Cloudflare's own R2 recommendation.
+  `VIRUS_SCAN_API_KEY`, `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY` — see "Env vars" below.
+- **`next.config.ts`**: `experimental.serverActions.bodySizeLimit` raised to `12mb` — Next's
+  default (1 MB) is well under a scanned document or a phone photo, and would fail silently
+  from the applicant's point of view (the request never reaches the Server Action to explain why).
+- **`submitApplication`** (same file) flips `DRAFT` → `PENDING_REVIEW` once
+  `checklistProgress().canSubmit` is true. Button only renders when that's already true — the
+  gate is enforced again server-side regardless. **Not yet clicked for real** — see Immediate
+  next steps.
+- Cloudmersive call is a raw `fetch` (`src/lib/virus-scan.ts`), not their client SDK — one
+  endpoint, not worth a generated-client dependency for.
+- Verified live against the real dev database (not just typechecked): create, replace
+  (old object superseded, no duplicate row, counter stays correct), and the submit button
+  appearing only once 5/5 required documents are in.
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
@@ -95,7 +140,10 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   difference fixes nothing — the attacker reads the network tab, not the Alert component.
 - Email verification does not block login; it **will block creating an application** (Phase 3).
 - API keys least-privilege (Resend: sending + one domain). Same for R2 in Phase 5.
-- Upload pipeline order is non-negotiable: validate → Cloudmersive scan → then R2.
+- Upload pipeline order is non-negotiable: validate → Cloudmersive scan → then R2. Enforced in
+  `uploadDocument` (`src/lib/actions/documents.ts`) — see "Uploads" below.
+- Documents are only uploadable/replaceable in `DRAFT`, `REJECTED`, `NEEDS_REVISION`
+  (`canUploadInStatus()`) — never `PENDING_REVIEW` or `APPROVED`.
 
 ## Signup enumeration (found & fixed Aug 2026)
 `api/routes/sign-up.mjs` line 163:
@@ -212,4 +260,14 @@ requirements table.)
 ## Env vars
 `DATABASE_URL` (pooled), `DIRECT_URL` (unpooled), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
 `RESEND_API_KEY`, `EMAIL_FROM`. Logo URL is hard-coded in code (public, not secret).
+
+R2 / Cloudmersive (Phase 5): `S3_ENDPOINT` (full bucket URL — see the endpoint gotcha under
+"Uploads"), `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,
+`VIRUS_SCAN_API_KEY`.
+
 Git-ignored: `src/generated`, `.claude/skills/`, `.agents/`, `.windsurf/`, `skills-lock.json`.
+
+**Stray var found in `.env`:** `DEBUG_TOKEN` — leftover from a `src/app/api/debug/env/route.ts`
+that was added in commit `943641d` ("debug") and removed again in `dcc4e27`. The route is gone;
+the env var isn't. Worth deleting from `.env` next time it's touched — not done now since it's
+unused and harmless, and this session didn't go looking for it on purpose.

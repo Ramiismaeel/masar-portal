@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 
 import { findCategory } from "@/lib/categories";
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
-import { isWizardComplete, totalSteps, STEP_IDENTITY } from "@/lib/wizard";
+import { isWizardComplete, totalSteps } from "@/lib/wizard";
 import type { UserApplication } from "@/lib/applications";
 import { Button } from "@/components/ui/button";
 
@@ -34,7 +34,7 @@ export function ApplicationCard({
   const total = totalSteps(category.value);
 
   const href = complete
-    ? `/applications/${application.id}/wizard?step=${STEP_IDENTITY}`
+    ? `/applications/${application.id}`
     : `/applications/${application.id}/wizard`;
 
   return (
@@ -80,7 +80,7 @@ export function ApplicationCard({
           nativeButton={false}
           render={<Link href={href} />}
         >
-          {isDraft && !complete ? "Continue" : "Review answers"}
+          {isDraft && !complete ? "Continue" : "View checklist"}
           <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
         </Button>
       </div>
