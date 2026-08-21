@@ -16,6 +16,8 @@ import {
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
 import { UploadControl } from "@/components/checklist/upload-control";
 import { SubmitApplicationButton } from "@/components/checklist/submit-application-button";
+import { DeleteDocumentControl } from "@/components/checklist/delete-document-control";
+import { DeleteApplicationControl } from "@/components/checklist/delete-application-control";
 
 type UploadedDocument = { fileName: string };
 
@@ -131,6 +133,15 @@ export default async function ApplicationPage({
             Edit your answers
           </Link>
         )}
+
+        {/* Deletable only before submission — matches canUploadInStatus's
+            DRAFT case, but narrower on purpose: REJECTED/NEEDS_REVISION can
+            still be edited, but they've already been seen by an admin once,
+            so deleting the application itself (not just a document) stops
+            there. */}
+        {application.status === "DRAFT" && (
+          <DeleteApplicationControl applicationId={application.id} />
+        )}
       </div>
     </div>
   );
@@ -210,9 +221,17 @@ function RequirementRow({
             {requirement.labelAr}
           </span>
           {document && (
-            <span className="block truncate text-xs text-muted-foreground">
-              {document.fileName}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="truncate text-xs text-muted-foreground">
+                {document.fileName}
+              </span>
+              {canUpload && (
+                <DeleteDocumentControl
+                  applicationId={applicationId}
+                  requirementCode={requirement.code}
+                />
+              )}
+            </div>
           )}
         </div>
 

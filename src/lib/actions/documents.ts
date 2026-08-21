@@ -163,6 +163,73 @@ export async function uploadDocument(
   return { error: null };
 }
 
+export type DeleteDocumentState = { error: string | null };
+
+export async function deleteDocument(
+  _prev: DeleteDocumentState,
+  formData: FormData,
+): Promise<DeleteDocumentState> {
+  const application = await loadOwnedApplication(formData.get("applicationId"));
+  if (!application) {
+    return { error: "Application not found." };
+  }
+
+  // Same statuses as upload/replace — a document mid-review or already
+  // accepted can't be pulled out from under the admin looking at it.
+  if (!canUploadInStatus(application.status)) {
+    return { error: "This application is not open for changes right now." };
+  }
+
+  const rawRequirementCode = formData.get("requirementCode");
+  if (typeof rawRequirementCode !== "string") {
+    return { error: "Unknown document type." };
+  }
+  const requirementCode = rawRequirementCode;
+
+  const document = await prisma.document.findUnique({
+    where: {
+      applicationId_requirementCode: {
+        applicationId: application.id,
+        requirementCode,
+      },
+    },
+    select: { storageKey: true },
+  });
+
+  // Nothing to delete is not an error — same end state either way.
+  if (!document) {
+    return { error: null };
+  }
+
+  try {
+    await prisma.document.delete({
+      where: {
+        applicationId_requirementCode: {
+          applicationId: application.id,
+          requirementCode,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("deleteDocument: db delete failed", error);
+    return { error: "Could not remove the file. Please try again." };
+  }
+
+  // The Document row is the source of truth for "is this uploaded" — delete
+  // it first, then best-effort clean up R2. If the object delete fails, the
+  // checklist is still correct; storage just holds an orphan until retried,
+  // same trade-off as the superseded-object cleanup in uploadDocument above.
+  await r2
+    .send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: document.storageKey }))
+    .catch((error) => {
+      console.error("deleteDocument: failed to delete R2 object", error);
+    });
+
+  revalidatePath(`/applications/${application.id}`);
+
+  return { error: null };
+}
+
 export type SubmitApplicationState = { error: string | null };
 
 export async function submitApplication(
