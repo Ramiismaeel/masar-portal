@@ -1,0 +1,184 @@
+{
+  "LocaleSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "ar": "Arabic"
+  },
+  "Common": {
+    "backToDashboard": "Back to dashboard"
+  },
+  "AppLayout": {
+    "admin": "Admin",
+    "myDashboard": "My dashboard",
+    "verifyBanner": "Verify your email to submit an application. We sent a link to <b>{email}</b>."
+  },
+  "Home": {
+    "goToDashboard": "Go to dashboard",
+    "logIn": "Log in",
+    "createAccount": "Create account",
+    "heroTitle": "Your German visa documents, in one place.",
+    "heroBody": "Masar Center guides you through the paperwork: a checklist built for your case, a place to upload every document, and a review from our team before anything reaches the embassy.",
+    "chooseCategory": "Choose your category",
+    "chooseCategoryBody": "Each one has its own document checklist.",
+    "howItWorks": "How it works",
+    "step1Title": "Choose your category",
+    "step1Body": "Study, Chancenkarte, Medical (D16) or Ausbildung — pick the one that matches your plan.",
+    "step2Title": "Answer a few questions",
+    "step2Body": "A short form, two steps. It takes about two minutes on a phone.",
+    "step3Title": "Upload your documents",
+    "step3Body": "You get a personalised checklist. Masar reviews each file and tells you what is missing.",
+    "footerRights": "© {year} Masar Center",
+    "impressum": "Impressum",
+    "privacy": "Privacy"
+  },
+  "CategoryCard": {
+    "start": "Start"
+  },
+  "CategoryPicker": {
+    "allTaken": "You have an application in every category."
+  },
+  "Dashboard": {
+    "welcome": "Welcome, {name}",
+    "yourApplications": "Your applications",
+    "empty": "You have not started an application yet. Choose a category below to begin.",
+    "chooseCategory": "Choose a category",
+    "startAnother": "Start another application"
+  },
+  "Wizard": {
+    "saveAndContinueLater": "Save and continue later",
+    "yourDetails": "Your details",
+    "oneMoreQuestion": "One more question",
+    "studentLegend": "Is your programme taught in German or English?",
+    "studentHint": "If it is taught in English, you will also need an English language certificate.",
+    "medicalLegend": "What is your profession?",
+    "medicalHint": "Doctors are asked for one extra document (بيان معاودة).",
+    "stepOf": "Step {current} of {total}",
+    "fullNameLatin": "Full name (Latin letters)",
+    "fullNameLatinPlaceholder": "As printed in your passport",
+    "fullNameLatinHint": "Exactly as it appears in the machine-readable line of your passport.",
+    "phone": "Phone number",
+    "passportNumber": "Passport number",
+    "passportExpiry": "Passport expiry date",
+    "saveAndContinue": "Save & continue",
+    "saving": "Saving…",
+    "saveAndFinish": "Save & finish",
+    "back": "Back"
+  },
+  "Checklist": {
+    "title": "Your document checklist",
+    "lockedReview": "Your application is being reviewed. Documents are locked until a decision is made.",
+    "lockedApproved": "This application has been approved. Documents are locked.",
+    "uploadedOf": "{uploaded} of {total} required documents uploaded",
+    "optional": "Optional",
+    "noteFromMasar": "Note from Masar:",
+    "editAnswers": "Edit your answers",
+    "upload": "Upload",
+    "replace": "Replace",
+    "uploading": "Uploading…",
+    "delete": "Delete",
+    "removeQuestion": "Remove?",
+    "confirm": "Confirm",
+    "removing": "Removing…",
+    "cancel": "Cancel",
+    "deleteApplication": "Delete this application",
+    "deleteApplicationWarning": "This permanently deletes this application and every document uploaded to it. This cannot be undone.",
+    "deleteApplicationConfirm": "Yes, delete this application",
+    "deleting": "Deleting…",
+    "submit": "Submit application",
+    "submitting": "Submitting…"
+  },
+  "ApplicationCard": {
+    "started": "Started {date}",
+    "questionsStep": "Questions: step {current} of {total}",
+    "documentsUploaded": "{count, plural, one {# document uploaded} other {# documents uploaded}}",
+    "continue": "Continue",
+    "viewChecklist": "View checklist"
+  },
+  "NewApplication": {
+    "intro": "Next you'll answer two short questions, then get your document checklist. You can stop at any point and continue later — nothing is sent to Masar until you submit.",
+    "verifyFirst": "Confirm your email address before starting an application. Check your inbox — you can resend the message from your dashboard.",
+    "start": "Start application",
+    "starting": "Creating…"
+  },
+  "Auth": {
+    "Signup": {
+      "title": "Create an account",
+      "fullName": "Full name",
+      "email": "Email",
+      "password": "Password",
+      "passwordHint": "At least 8 characters",
+      "confirmPassword": "Confirm password",
+      "submit": "Sign up",
+      "submitting": "Creating account…",
+      "haveAccount": "Already have an account?",
+      "logIn": "Log in",
+      "errorRequired": "All fields are required",
+      "errorEmail": "Please enter a valid email address",
+      "errorPasswordLength": "Password must be at least 8 characters long",
+      "errorPasswordMatch": "Passwords do not match",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "errorSignupFallback": "Could not create your account. Please try again.",
+      "checkInboxTitle": "Check your inbox",
+      "checkInboxBody": "If {email} isn't already registered, we've sent a verification link to it. Click the link to verify your address, then sign in.",
+      "goToLogin": "Go to login"
+    },
+    "Login": {
+      "title": "Login to your account",
+      "email": "Email",
+      "password": "Password",
+      "forgotPassword": "Forgot password?",
+      "submit": "Login",
+      "submitting": "Logging in...",
+      "noAccount": "Don't have an account?",
+      "signup": "Signup",
+      "errorRequired": "All fields are required",
+      "errorEmail": "Please enter a valid email address",
+      "errorInvalid": "Invalid email or password",
+      "errorGeneric": "Something went wrong. Please try again."
+    },
+    "ForgotPassword": {
+      "title": "Reset your password",
+      "intro": "Enter the email address you signed up with and we will send you a link to set a new password.",
+      "email": "Email",
+      "submit": "Send reset link",
+      "submitting": "Sending…",
+      "backToLogin": "Back to login",
+      "sentBody": "If an account exists for <b>{email}</b>, we have sent a reset link. Please check your inbox and your spam folder.",
+      "expiry": "The link expires in 1 hour."
+    },
+    "ResetPassword": {
+      "invalidTitle": "Invalid link",
+      "invalidBody": "This password reset link is invalid or has expired.",
+      "requestNew": "Request a new link",
+      "title": "Set a new password",
+      "newPassword": "New password",
+      "passwordHint": "At least 8 characters",
+      "confirmPassword": "Confirm new password",
+      "submit": "Set new password",
+      "submitting": "Saving…",
+      "errorPasswordLength": "Password must be at least 8 characters long",
+      "errorPasswordMatch": "Passwords do not match",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "errorFallback": "This link is invalid or has expired. Please request a new one."
+    },
+    "VerifyEmail": {
+      "expiredTitle": "This link has expired",
+      "expiredBody": "Verification links are valid for 7 days. Log in with your email and password, then use the \"Resend email\" button to get a new one.",
+      "invalidTitle": "This link is invalid",
+      "invalidBody": "This verification link is malformed or has already been used. Log in and use the \"Resend email\" button if you still need to verify.",
+      "verifiedTitle": "Email verified",
+      "verifiedBody": "Your email address has been verified. Please sign in to continue.",
+      "goToLogin": "Go to login"
+    },
+    "Resend": {
+      "sent": "Email sent — check your inbox.",
+      "button": "Resend email",
+      "sending": "Sending…",
+      "errorFallback": "Could not send the email. Please try again."
+    },
+    "SignOut": {
+      "button": "Sign out",
+      "signingOut": "Signing out…"
+    }
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { useTranslations } from "next-intl";
 
 import {
   deleteApplication,
@@ -13,9 +14,10 @@ const EMPTY_STATE: DeleteApplicationState = { error: null };
 
 function ConfirmButton() {
   const { pending } = useFormStatus();
+  const t = useTranslations("Checklist");
   return (
     <Button type="submit" variant="destructive" disabled={pending}>
-      {pending ? "Deleting…" : "Yes, delete this application"}
+      {pending ? t("deleting") : t("deleteApplicationConfirm")}
     </Button>
   );
 }
@@ -25,6 +27,7 @@ export function DeleteApplicationControl({
 }: {
   applicationId: string;
 }) {
+  const t = useTranslations("Checklist");
   const [confirming, setConfirming] = useState(false);
   const [state, formAction] = useActionState(deleteApplication, EMPTY_STATE);
 
@@ -35,7 +38,7 @@ export function DeleteApplicationControl({
         onClick={() => setConfirming(true)}
         className="text-center text-sm text-destructive underline-offset-4 hover:underline"
       >
-        Delete this application
+        {t("deleteApplication")}
       </button>
     );
   }
@@ -43,8 +46,7 @@ export function DeleteApplicationControl({
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
       <p className="text-center text-sm text-destructive">
-        This permanently deletes this application and every document uploaded
-        to it. This cannot be undone.
+        {t("deleteApplicationWarning")}
       </p>
       <form
         action={formAction}
@@ -53,7 +55,7 @@ export function DeleteApplicationControl({
         <input type="hidden" name="applicationId" value={applicationId} />
         <ConfirmButton />
         <Button type="button" variant="outline" onClick={() => setConfirming(false)}>
-          Cancel
+          {t("cancel")}
         </Button>
       </form>
       {state.error && (

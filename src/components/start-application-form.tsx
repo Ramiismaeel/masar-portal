@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { useTranslations } from "next-intl";
 
 import {
   createApplication,
@@ -14,10 +15,11 @@ const initialState: CreateApplicationState = { error: null };
 function SubmitButton({ disabled }: { disabled: boolean }) {
   // useFormStatus must live in a child of <form> — that is how it finds the form.
   const { pending } = useFormStatus();
+  const t = useTranslations("NewApplication");
 
   return (
     <Button type="submit" size="lg" disabled={pending || disabled}>
-      {pending ? "Creating…" : "Start application"}
+      {pending ? t("starting") : t("start")}
     </Button>
   );
 }
@@ -30,6 +32,7 @@ export function StartApplicationForm({
   emailVerified: boolean;
 }) {
   const [state, formAction] = useActionState(createApplication, initialState);
+  const t = useTranslations("NewApplication");
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -38,8 +41,7 @@ export function StartApplicationForm({
 
       {!emailVerified && (
         <p className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-          Confirm your email address before starting an application. Check your
-          inbox — you can resend the message from your dashboard.
+          {t("verifyFirst")}
         </p>
       )}
 

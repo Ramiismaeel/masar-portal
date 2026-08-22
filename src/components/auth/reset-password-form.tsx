@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function ResetPasswordForm({ token }: { token: string }) {
+  const t = useTranslations("Auth.ResetPassword");
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -20,11 +22,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
     setError(null);
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters long");
+      setError(t("errorPasswordLength"));
       return;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("errorPasswordMatch"));
       return;
     }
 
@@ -37,10 +39,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       });
 
       if (error) {
-        setError(
-          error.message ??
-            "This link is invalid or has expired. Please request a new one.",
-        );
+        setError(error.message ?? t("errorFallback"));
         return;
       }
 
@@ -48,7 +47,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       router.refresh();
     } catch (err) {
       console.error(err);
-      setError("Something went wrong. Please try again.");
+      setError(t("errorGeneric"));
     } finally {
       setIsSubmitting(false);
     }
@@ -64,13 +63,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="password">New password</Label>
+        <Label htmlFor="password">{t("newPassword")}</Label>
         <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="At least 8 characters"
+          placeholder={t("passwordHint")}
           autoComplete="new-password"
           required
           disabled={isSubmitting}
@@ -78,7 +77,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="confirmPassword">Confirm new password</Label>
+        <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
         <Input
           id="confirmPassword"
           type="password"
@@ -91,7 +90,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </div>
 
       <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Saving…" : "Set new password"}
+        {isSubmitting ? t("submitting") : t("submit")}
       </Button>
     </form>
   );

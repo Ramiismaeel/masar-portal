@@ -2,10 +2,13 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { getTranslations, getLocale } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { findCategory } from "@/lib/categories";
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 import { StartApplicationForm } from "@/components/start-application-form";
 import type { VisaCategory } from "@/generated/prisma/client";
 
@@ -47,6 +50,9 @@ export default async function NewApplicationPage({
   if (existing) redirect(`/applications/${existing.id}/wizard`);
 
   const Icon = category.icon;
+  const t = await getTranslations("NewApplication");
+  const common = await getTranslations("Common");
+  const locale = (await getLocale()) as Locale;
 
   return (
     <div className="mx-auto w-full max-w-xl">
@@ -55,7 +61,7 @@ export default async function NewApplicationPage({
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" />
-        Back to dashboard
+        {common("backToDashboard")}
       </Link>
 
       <div className="mt-6 rounded-xl border border-border bg-card p-6">
@@ -64,16 +70,14 @@ export default async function NewApplicationPage({
         </span>
 
         <h1 className="mt-4 text-2xl font-semibold text-card-foreground">
-          {category.labelEn}
+          {pick(locale, category.labelEn, category.labelAr)}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {category.blurbEn}
+          {pick(locale, category.blurbEn, category.blurbAr)}
         </p>
 
         <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-          Next you&apos;ll answer two short questions, then get your document
-          checklist. You can stop at any point and continue later — nothing is
-          sent to Masar until you submit.
+          {t("intro")}
         </p>
 
         <div className="mt-6">

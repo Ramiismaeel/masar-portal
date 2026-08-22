@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import type { CategoryMeta } from "@/lib/categories";
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 
 type CategoryCardProps = {
   category: CategoryMeta;
   /** Computed by the caller — the card must not know anything about sessions. */
   href: string;
+  locale: Locale;
 };
 
-export function CategoryCard({ category, href }: CategoryCardProps) {
+export function CategoryCard({ category, href, locale }: CategoryCardProps) {
   const Icon = category.icon;
+  const t = useTranslations("CategoryCard");
 
   return (
     <Link
@@ -22,15 +27,15 @@ export function CategoryCard({ category, href }: CategoryCardProps) {
       </span>
 
       <span className="text-lg font-semibold text-card-foreground">
-        {category.labelEn}
+        {pick(locale, category.labelEn, category.labelAr)}
       </span>
 
       <span className="text-sm leading-relaxed text-muted-foreground">
-        {category.blurbEn}
+        {pick(locale, category.blurbEn, category.blurbAr)}
       </span>
 
       <span className="mt-auto inline-flex items-center gap-1.5 pt-2 text-sm font-medium text-primary">
-        Start
+        {t("start")}
         <ArrowRight
           className="size-4 transition-transform group-hover:translate-x-0.5 rtl:-scale-x-100"
           aria-hidden="true"

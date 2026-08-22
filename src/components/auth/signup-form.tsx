@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function SignupForm() {
+  const t = useTranslations("Auth.Signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,19 +30,19 @@ export function SignupForm() {
     setError(null);
 
     if (!name || !email || !password || !confirmPassword) {
-      setError("All fields are required");
+      setError(t("errorRequired"));
       return;
     }
     if (!email.includes("@")) {
-      setError("Please enter a valid email address");
+      setError(t("errorEmail"));
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters long");
+      setError(t("errorPasswordLength"));
       return;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("errorPasswordMatch"));
       return;
     }
 
@@ -55,9 +57,7 @@ export function SignupForm() {
       });
 
       if (error) {
-        setError(
-          error.message ?? "Could not create your account. Please try again.",
-        );
+        setError(error.message ?? t("errorSignupFallback"));
         return;
       }
 
@@ -67,7 +67,7 @@ export function SignupForm() {
       setSubmitted(true);
     } catch (err) {
       console.error(err);
-      setError("Something went wrong. Please try again.");
+      setError(t("errorGeneric"));
     } finally {
       setIsSubmitting(false);
     }
@@ -78,20 +78,18 @@ export function SignupForm() {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="text-center">Check your inbox</CardTitle>
+            <CardTitle className="text-center">{t("checkInboxTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-center">
             <p className="text-sm text-muted-foreground">
-              If {email} isn&apos;t already registered, we&apos;ve sent a
-              verification link to it. Click the link to verify your address,
-              then sign in.
+              {t("checkInboxBody", { email })}
             </p>
             <Button
               className="w-full"
               nativeButton={false}
               render={<Link href="/login" />}
             >
-              Go to login
+              {t("goToLogin")}
             </Button>
           </CardContent>
         </Card>
@@ -103,7 +101,7 @@ export function SignupForm() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-center">Create an account</CardTitle>
+          <CardTitle className="text-center">{t("title")}</CardTitle>
         </CardHeader>
 
         <CardContent>
@@ -116,7 +114,7 @@ export function SignupForm() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Full name</Label>
+              <Label htmlFor="name">{t("fullName")}</Label>
               <Input
                 id="name"
                 value={name}
@@ -129,7 +127,7 @@ export function SignupForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -137,19 +135,20 @@ export function SignupForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 autoComplete="email"
+                dir="ltr"
                 required
                 disabled={isSubmitting}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("password")}</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={t("passwordHint")}
                 autoComplete="new-password"
                 required
                 disabled={isSubmitting}
@@ -157,7 +156,7 @@ export function SignupForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -170,17 +169,17 @@ export function SignupForm() {
             </div>
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Creating account…" : "Sign up"}
+              {isSubmitting ? t("submitting") : t("submit")}
             </Button>
           </form>
 
           <p className="mt-4 text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
+            {t("haveAccount")}{" "}
             <Link
               href="/login"
               className="text-primary underline-offset-4 hover:underline"
             >
-              Log in
+              {t("logIn")}
             </Link>
           </p>
         </CardContent>

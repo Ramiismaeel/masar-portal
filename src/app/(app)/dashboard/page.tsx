@@ -1,10 +1,12 @@
 import { headers } from "next/headers";
+import { getTranslations, getLocale } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { getUserApplications } from "@/lib/applications";
 import { isCategoryValue, type CategoryValue } from "@/lib/categories";
 import { ApplicationCard } from "@/components/application-card";
 import { CategoryPicker } from "@/components/category-picker";
+import type { Locale } from "@/i18n/locale";
 
 export default async function DashboardPage({
   searchParams,
@@ -19,6 +21,8 @@ export default async function DashboardPage({
   if (!session) return null;
 
   const applications = await getUserApplications(session.user.id);
+  const t = await getTranslations("Dashboard");
+  const locale = (await getLocale()) as Locale;
 
   // Narrowing the Prisma enum to our own union, so CategoryPicker cannot be
   // handed a value that CATEGORIES does not know about.
@@ -28,15 +32,16 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-10">
-      <h1 className="text-2xl font-semibold">Welcome, {session.user.name}</h1>
+      <h1 className="text-2xl font-semibold">
+        {t("welcome", { name: session.user.name })}
+      </h1>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-medium">Your applications</h2>
+        <h2 className="text-lg font-medium">{t("yourApplications")}</h2>
 
         {applications.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
-            You have not started an application yet. Choose a category below to
-            begin.
+            {t("empty")}
           </p>
         ) : (
           <ul className="space-y-3">
@@ -44,6 +49,7 @@ export default async function DashboardPage({
               <ApplicationCard
                 key={application.id}
                 application={application}
+                locale={locale}
                 // The wizard redirects here with ?application=<id>. Highlighting
                 // that card answers "did my answers save?" without a toast.
                 highlighted={application.id === highlightedId}
@@ -56,10 +62,10 @@ export default async function DashboardPage({
       <section className="space-y-4">
         <h2 className="text-lg font-medium">
           {applications.length === 0
-            ? "Choose a category"
-            : "Start another application"}
+            ? t("chooseCategory")
+            : t("startAnother")}
         </h2>
-        <CategoryPicker taken={taken} />
+        <CategoryPicker taken={taken} locale={locale} />
       </section>
     </div>
   );

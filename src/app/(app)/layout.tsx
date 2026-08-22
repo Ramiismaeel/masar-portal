@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ResendEmailButton } from "@/components/auth/resend-email-button";
 import { Button } from "@/components/ui/button";
+import { LocaleSwitcher } from "@/components/locale-switcher";
 
 export default async function DashboardLayout({
   children,
@@ -19,6 +21,8 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  const t = await getTranslations("AppLayout");
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -30,6 +34,7 @@ export default async function DashboardLayout({
           </Link>
 
           <div className="flex items-center gap-4">
+            <LocaleSwitcher />
             {session.user.role === "ADMIN" && (
               <Button
                 variant="outline"
@@ -37,7 +42,7 @@ export default async function DashboardLayout({
                 nativeButton={false}
                 render={<Link href="/admin" />}
               >
-                Admin
+                {t("admin")}
               </Button>
             )}
             <span className="text-sm text-muted-foreground">
@@ -52,8 +57,10 @@ export default async function DashboardLayout({
         <div className="border-b bg-muted">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <p className="text-sm">
-              Verify your email to submit an application. We sent a link to{" "}
-              <span className="font-medium">{session.user.email}</span>.
+              {t.rich("verifyBanner", {
+                email: session.user.email,
+                b: (chunks) => <span className="font-medium">{chunks}</span>,
+              })}
             </p>
 
             <ResendEmailButton email={session.user.email} />

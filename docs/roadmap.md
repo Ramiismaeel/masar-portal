@@ -67,30 +67,110 @@ Any page added under `(app)` is protected by construction.
 - [x] **Phase 6** Admin dashboard: role-gated `/admin`, per-document review (approve/reject/
       request-changes + note), application-level decision, notification email, resubmission
       loop. See "Admin dashboard" below.
-- [ ] **Phase 7** i18n (EN/AR) & PWA.
+- [~] **Phase 7 (i18n done, PWA not started)** EN/AR language switch, RTL, translated applicant-
+      facing UI. See "i18n" below. PWA (manifest, installability, offline) deliberately not
+      touched this pass — scoped out up front as a separate, unrelated effort.
 - [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
 - [ ] **Phase 9** API docs for the mobile app.
 
 ## Immediate next steps
-1. **No way to change a decision once made.** `decideApplication` only runs from
+1. **PWA** — manifest, icons, installability, offline behaviour. None of it exists yet; Phase 7
+   only covered i18n.
+2. **No way to change a decision once made.** `decideApplication` only runs from
    `PENDING_REVIEW` — an admin who mis-clicks Approve/Reject has no undo. The applicant would
    need to be talked into... there's no path back at all from `APPROVED`, since nothing in the
    app ever un-approves. Worth a hard look before this is used for anything real.
-2. **Wizard answers (name, phone, passport, instructionLanguage/medicalProfession) still aren't
+3. **Wizard answers (name, phone, passport, instructionLanguage/medicalProfession) still aren't
    editable during `NEEDS_REVISION`/`REJECTED`** — only documents are. `saveIdentityStep`/
    `saveQuestionStep` in `src/lib/actions/wizard.ts` still gate on `status === "DRAFT"` exactly.
    If an admin ever rejects on a wizard-answer problem (wrong profession, expired passport
    number typo) rather than a document problem, the applicant has no way to fix it. Not touched
    this phase — the review UI has no way to express "the answer is wrong," only "the file is
    wrong."
-3. Per-document review and the application-level decision are **intentionally uncoupled** — an
+4. Per-document review and the application-level decision are **intentionally uncoupled** — an
    admin can Approve the whole application without having reviewed any individual document, or
    flag every document NEEDS_REVISION and still click Approve. No software gate stops a
    contradictory decision; it's trusted admin judgement. Revisit if that turns out to be a
    problem in practice.
+5. **Server Action error strings are still English-only** — see "i18n" below, "What's NOT
+   translated."
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
+
+## i18n (Phase 7, Aug 2026)
+- **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
+  (`src/i18n/locale.ts`'s `LOCALE_COOKIE`), read server-side in `src/i18n/request.ts`. Same URL
+  in both languages — this was the deciding constraint: routed locales (`/en/...` vs `/ar/...`)
+  force a real navigation on switch, and the roadmap already required *"switching language must
+  not lose form state."* A cookie-based, no-prefix setup was the only option that satisfied that
+  outright rather than needing extra engineering to work around it.
+- **Switching mechanism, and a bug caught live while testing it**: `setLocale` (
+  `src/lib/actions/locale.ts`) sets the cookie and best-effort mirrors it to `User.locale` when
+  signed in — but does **not** call `revalidatePath`. The first version did
+  (`revalidatePath("/", "layout")`), and confirmed live in the browser that it wiped an
+  in-progress, un-submitted wizard field the instant the language was switched — busting the
+  *root* layout's cache forces a much more aggressive re-render than revalidating a leaf path
+  does, aggressive enough to recreate the DOM node under an uncontrolled `<input>` rather than
+  patch it. Fixed by moving to the pattern `next-intl` itself documents for this exact
+  cookie-based setup: `LocaleSwitcher` (client) calls the action, then `router.refresh()` —
+  re-confirmed live afterward that a typed value now survives the switch.
+- **`LocaleSwitcher`** (`src/components/locale-switcher.tsx`) shows the language you'd switch
+  **to**, not the current one — a single one-tap toggle, not a select. Placed in the `(auth)`
+  layout, the `(app)` layout, and the home page header — i.e. every applicant-facing surface.
+  Deliberately **not** in the admin layout (see below).
+- **Two kinds of bilingual content, two different mechanisms — don't conflate them**:
+  - UI copy (labels, buttons, headings, static strings) → `next-intl` messages,
+    `messages/en.json` / `messages/ar.json`, via `useTranslations`/`getTranslations`. Both files
+    are kept in lockstep on purpose — verified programmatically (walked both JSON trees, diffed
+    the key sets) that all 144 keys match exactly; a missing key throws at render time for
+    whichever locale is missing it.
+  - Bilingual **domain data** with a stable identity (`checklists.ts` requirements,
+    `categories.ts`, `application-status.ts`, `document-review-status.ts`) → already had
+    `labelEn`/`labelAr` fields sitting there since Phase 4, now actually consumed via
+    `pick(locale, en, ar)` (`src/i18n/pick.ts`) instead of sitting unused. This is *not* the same
+    mechanism as `next-intl` — it's plain data selection, no ICU formatting needed.
+  - The checklist page used to show **both** `labelEn` and `labelAr` stacked on every row
+    (a deliberate stopgap from Phase 4/5, before a real switch existed). Now that one does, that
+    page shows only the active locale's label, same as everywhere else — the permanently-bilingual
+    display was retired as part of this phase, not left in place alongside the new switch.
+- **Arabic plurals are real, not a formality**: `documentsUploaded` in `ApplicationCard` uses
+  ICU `{count, plural, one {…} two {…} few {…} other {…}}` — Arabic's CLDR plural categories
+  (zero/one/two/few 3–10/many 11–99/other) are genuinely different from English's one/other, and
+  confirmed live that 5 documents renders "few" grammar (`تم رفع 5 مستندات`) correctly, not a
+  bolted-on `s`.
+  Numbers themselves stay Western digits everywhere on purpose (dates, counts) —
+  `numberingSystem: "latn"` pinned explicitly in `ApplicationCard`'s `Intl.DateTimeFormat` — for
+  consistency with phone/passport-number fields, which are `dir="ltr"` and Latin-only regardless
+  of UI language.
+- **Admin (`/admin`) is deliberately English-only and LTR always**, regardless of the visitor's
+  own locale preference — it's a staff-only internal tool, out of scope for this pass. Getting
+  this right took two separate fixes, both caught live in the browser, not anticipated in
+  advance:
+  1. `dir` is set once on `<html>` from the locale cookie in the root layout — so with an Arabic
+     preference active, `/admin` initially rendered English text inside an RTL-mirrored layout
+     (badges and dates on the wrong side for the language actually on screen). Fixed with an
+     explicit `dir="ltr"` on `admin/layout.tsx`'s wrapper, overriding the inherited root value.
+  2. Shared components used inside admin (`SignOutButton`) call `useTranslations()` themselves,
+     and inherited the root `NextIntlClientProvider`'s Arabic messages regardless of the `dir`
+     fix — "Sign out" was rendering as "تسجيل الخروج" inside an English admin page. Fixed by
+     wrapping `admin/layout.tsx`'s whole tree in its own nested `NextIntlClientProvider` pinned
+     to `locale="en"` with the English catalog imported directly — nested providers override the
+     outer one for everything under them.
+- **What's NOT translated, on purpose, this pass**: Server Action-returned error strings (e.g.
+  `createApplication`'s `"Please choose a valid category."`, the wizard's field-validation
+  messages) and Better Auth's own `error.message` values. Only the client-side static copy —
+  labels, headings, buttons, placeholders, and each component's own validation fallback text —
+  goes through `next-intl`. Translating action-returned errors would mean threading locale
+  through every Server Action and is a real follow-up, not done here to keep this pass's
+  changeset to UI copy and data-driven labels.
+- **Verified live in the browser, not just typechecked**: home page, signup redirect→dashboard,
+  full dashboard, and the checklist page (including per-document review-status badges and admin
+  notes picking the right label) all confirmed correct in both languages, RTL mirroring
+  (flex order, icon flipping via the existing `rtl:-scale-x-100` convention, card grid order)
+  correct without any additional CSS work beyond what CLAUDE.md's logical-properties rule
+  already required, and the admin LTR/English-lock confirmed to not leak back into the
+  applicant-facing pages when switching between the two sections.
 
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |

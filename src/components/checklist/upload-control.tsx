@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { useTranslations } from "next-intl";
 
 import {
   uploadDocument,
@@ -12,6 +13,7 @@ const EMPTY_STATE: UploadDocumentState = { error: null };
 
 function FileInput({ label }: { label: string }) {
   const { pending } = useFormStatus();
+  const t = useTranslations("Checklist");
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -38,7 +40,7 @@ function FileInput({ label }: { label: string }) {
 
       {pending && (
         <span className="shrink-0 text-xs text-muted-foreground">
-          Uploading…
+          {t("uploading")}
         </span>
       )}
     </div>
@@ -48,21 +50,22 @@ function FileInput({ label }: { label: string }) {
 export function UploadControl({
   applicationId,
   requirementCode,
-  label,
+  isReplace,
 }: {
   applicationId: string;
   requirementCode: string;
-  /** "Upload" for a first-time slot, "Replace" once something is already there. */
-  label: "Upload" | "Replace";
+  /** false for a first-time slot, true once something is already there. */
+  isReplace: boolean;
 }) {
   const [state, formAction] = useActionState(uploadDocument, EMPTY_STATE);
+  const t = useTranslations("Checklist");
 
   return (
     <form action={formAction} className="flex flex-col gap-1.5">
       <input type="hidden" name="applicationId" value={applicationId} />
       <input type="hidden" name="requirementCode" value={requirementCode} />
 
-      <FileInput label={label} />
+      <FileInput label={isReplace ? t("replace") : t("upload")} />
 
       {state.error && (
         <p role="alert" className="text-xs text-destructive">
