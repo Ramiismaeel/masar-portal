@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offline — Masar Portal</title>
+<!--
+  Served by the service worker (src/app/sw.ts's `fallbacks`) when a page
+  navigation fails with no network.
+
+  A plain static file in public/, not a Next.js route — deliberately outside
+  the App Router entirely. Every route in this app inherits the root
+  layout's locale read (cookies(), a dynamic API), which makes the whole
+  render tree dynamic and un-prerenderable. A page that must be precached
+  before the network ever goes down can't depend on a request-time cookie
+  read, so this can't be a normal page no matter which layout it sits under.
+  Serwist precaches everything under public/ by default (globPublicPatterns),
+  so this needs no special build step of its own.
+
+  No Tailwind, no Next.js fonts — none of the build pipeline touches this
+  file. Styled inline, kept intentionally simple.
+-->
+<style>
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    text-align: center;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #ffffff;
+    color: #171717;
+  }
+  h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  p {
+    max-width: 24rem;
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0;
+  }
+  .ar {
+    direction: rtl;
+    font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+    margin-top: 1.5rem;
+  }
+</style>
+</head>
+<body>
+  <h1>You&#39;re offline</h1>
+  <p>This page isn&#39;t available without an internet connection. Reconnect and try again.</p>
+
+  <h1 class="ar">أنت غير متصل بالإنترنت</h1>
+  <p class="ar">هذه الصفحة غير متاحة بدون اتصال بالإنترنت. أعد الاتصال وحاول مرة أخرى.</p>
+</body>
+</html>

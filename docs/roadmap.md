@@ -67,32 +67,29 @@ Any page added under `(app)` is protected by construction.
 - [x] **Phase 6** Admin dashboard: role-gated `/admin`, per-document review (approve/reject/
       request-changes + note), application-level decision, notification email, resubmission
       loop. See "Admin dashboard" below.
-- [~] **Phase 7 (i18n done, PWA not started)** EN/AR language switch, RTL, translated applicant-
-      facing UI. See "i18n" below. PWA (manifest, installability, offline) deliberately not
-      touched this pass — scoped out up front as a separate, unrelated effort.
+- [x] **Phase 7** EN/AR language switch, RTL, translated applicant-facing UI (see "i18n" below),
+      plus installable PWA — manifest, service worker, offline fallback (see "PWA" below).
 - [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
 - [ ] **Phase 9** API docs for the mobile app.
 
 ## Immediate next steps
-1. **PWA** — manifest, icons, installability, offline behaviour. None of it exists yet; Phase 7
-   only covered i18n.
-2. **No way to change a decision once made.** `decideApplication` only runs from
+1. **No way to change a decision once made.** `decideApplication` only runs from
    `PENDING_REVIEW` — an admin who mis-clicks Approve/Reject has no undo. The applicant would
    need to be talked into... there's no path back at all from `APPROVED`, since nothing in the
    app ever un-approves. Worth a hard look before this is used for anything real.
-3. **Wizard answers (name, phone, passport, instructionLanguage/medicalProfession) still aren't
+2. **Wizard answers (name, phone, passport, instructionLanguage/medicalProfession) still aren't
    editable during `NEEDS_REVISION`/`REJECTED`** — only documents are. `saveIdentityStep`/
    `saveQuestionStep` in `src/lib/actions/wizard.ts` still gate on `status === "DRAFT"` exactly.
    If an admin ever rejects on a wizard-answer problem (wrong profession, expired passport
    number typo) rather than a document problem, the applicant has no way to fix it. Not touched
    this phase — the review UI has no way to express "the answer is wrong," only "the file is
    wrong."
-4. Per-document review and the application-level decision are **intentionally uncoupled** — an
+3. Per-document review and the application-level decision are **intentionally uncoupled** — an
    admin can Approve the whole application without having reviewed any individual document, or
    flag every document NEEDS_REVISION and still click Approve. No software gate stops a
    contradictory decision; it's trusted admin judgement. Revisit if that turns out to be a
    problem in practice.
-5. **Server Action error strings are still English-only** — see "i18n" below, "What's NOT
+4. **Server Action error strings are still English-only** — see "i18n" below, "What's NOT
    translated."
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
@@ -171,6 +168,79 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   correct without any additional CSS work beyond what CLAUDE.md's logical-properties rule
   already required, and the admin LTR/English-lock confirmed to not leak back into the
   applicant-facing pages when switching between the two sections.
+
+## PWA (Phase 7, Aug 2026)
+- **`@serwist/turbopack`, not `@serwist/next` — found live, not anticipated.** The standard
+  Serwist-for-Next.js setup (`withSerwistInit` from `@serwist/next`, a webpack `InjectManifest`
+  plugin writing a physical `public/sw.js` at build time) is the documented default everywhere,
+  and it's what got built first here. It silently produced **nothing** — `next build` completed
+  with only an easy-to-miss warning, no `public/sw.js` ever appeared, no error. Cause: Next.js 16
+  uses Turbopack for `next build` here, not just `next dev`, and `@serwist/next`'s plugin is
+  webpack-only — it doesn't run under Turbopack at all. Since this project's bundler is Turbopack
+  throughout (never opted into webpack for anything else), switching the *build* to webpack just
+  for the service worker was the wrong direction. Fixed by moving to `@serwist/turbopack`
+  instead, which takes a genuinely different mechanism (see below) — confirmed live afterward
+  that this one actually emits `public`-equivalent output (45 precache entries, ~1 MB) and the
+  browser registers it.
+- **Turbopack path serves the SW from a Route Handler, not a static file.**
+  `src/app/[path]/route.ts` exports `{ dynamic, dynamicParams, revalidate, generateStaticParams,
+  GET }` from `createSerwistRoute({ swSrc: "src/app/sw.ts" })` — this bundles `sw.ts` with
+  esbuild and statically generates `/sw.js` and `/sw.js.map` as SSG routes
+  (`generateStaticParams` + `dynamicParams: false`, so nothing else can hit `[path]`). Needed
+  `esbuild` installed as a **direct** dependency, confirmed live — `@serwist/turbopack` imports
+  it dynamically at request time, and Next's `serverExternalPackages` (which
+  `@serwist/turbopack`'s own `withSerwist` sets) means it's resolved from this project's own
+  `node_modules`, not bundled in, so it has to actually be there.
+- **No auto-registration on this path.** `@serwist/next`'s plugin injects a registration script
+  for you (`register: true` by default); `@serwist/turbopack` doesn't attempt this at all — it
+  only builds and serves the file. `src/components/register-service-worker.tsx` does it by hand
+  with the plain `navigator.serviceWorker.register()` API in a `useEffect`, gated to
+  `NODE_ENV === "production"` (registering in dev would fight Turbopack's own hot-reload with a
+  second caching layer). Confirmed live: `navigator.serviceWorker.getRegistration()` returns an
+  `activated` registration scoped to the whole origin after a production build + `next start`.
+- **`defaultCache` (from `@serwist/next/worker` — that half of the package is still used, just
+  not its webpack plugin) does the actual runtime-caching work**, not hand-picked rules — it's
+  already Next.js-App-Router-aware: NetworkFirst for RSC payloads/HTML navigations and `/api/*`
+  (so nothing authenticated or personal is ever served stale while a real connection exists — the
+  cache is strictly an offline fallback, never a substitute for a live request), CacheFirst/
+  StaleWhileRevalidate for static build assets and fonts, and an explicit carve-out for
+  `/api/auth/*` so the auth callback flow isn't intercepted. Given this app handles passports and
+  medical reports, "never silently serve stale authenticated content" was the property that
+  mattered most, and it's already how this behaves.
+- **Offline fallback is a static file in `public/`, not a Next.js page — on purpose.** Every page
+  in this app inherits the root layout's locale read (`cookies()`, a dynamic API), which makes
+  the entire render tree dynamic and un-prerenderable. A fallback that must be available *before*
+  the network goes down can't depend on a request-time cookie read — so it can't be a normal
+  page under any layout, no matter which one. `public/offline.html` is deliberately outside the
+  App Router entirely: plain inline-styled HTML, both languages shown together (the one
+  intentional exception to "one language on screen at a time" — there's no locale to key off of
+  here). Wired via `sw.ts`'s `fallbacks.entries`, matched on `request.destination === "document"`
+  so it only intercepts page navigations, not asset/API requests. Confirmed live via the Cache
+  Storage API (`caches.open(...).keys()`) that `/offline.html` is actually in the precache, not
+  just referenced.
+- **Icons: real mark, sourced from `https://masar-center.de/favicon-512x512.png`** — a proper
+  512×512 circular "M" mark (blue gradient, transparent corners), not the email wordmark used
+  for the first pass. Generated with `sharp`, installed and run from a scratch directory rather
+  than added to this project's own `package.json` — it's a native binary dependency needed for a
+  one-time asset-generation script, not anything the running app uses. "any"-purpose icons
+  (192/512px) are the source resized as-is, transparent corners intact — it's already a
+  self-contained mark, unlike the wordmark, which needed a background composited in to look
+  intentional. "Maskable" variants (Android's adaptive-icon safe zone) and the Apple touch icon
+  (180px, opaque — iOS mishandles transparency) fill the full square with a white background
+  and the mark sized to ~70–82% of the canvas. `src/app/icon.png` / `src/app/apple-icon.png` use
+  Next's file-based favicon convention — auto-linked, no manual `<link>` tags.
+- `src/app/manifest.ts` uses Next's file-based manifest convention (auto-served at
+  `/manifest.webmanifest`, auto-linked from every page) rather than a static `public/manifest.json`.
+- **`sw.ts` needs its own tsconfig** (`tsconfig.worker.json`, `lib: ["esnext", "webworker"]`) —
+  the `WorkerGlobalScope`/`ServiceWorkerGlobalScope` types aren't available under the main
+  `tsconfig.json`'s `dom` lib, and the two libs conflict if combined in one config. `sw.ts` is
+  excluded from the main `tsconfig.json` and checked separately
+  (`npx tsc --noEmit -p tsconfig.worker.json`) — remember to run both when touching service-worker
+  code, the routine `npx tsc --noEmit -p tsconfig.json` alone won't catch a `sw.ts` type error.
+- Verified live end-to-end against a real production build (`next build` + `next start`), not
+  dev mode: service worker registers and activates, manifest/icons/theme-color all correctly
+  auto-linked in `<head>`, `/offline.html` precached, `/manifest.webmanifest` serves the right
+  JSON, `/sw.js` serves real compiled content with the precache manifest inside it.
 
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |

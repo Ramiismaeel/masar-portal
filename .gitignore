@@ -43,6 +43,11 @@ next-env.d.ts
 
 /src/generated/prisma
 
+# Serwist build output — compiled from src/app/sw.ts on every build, same
+# reasoning as .next above.
+/public/sw.js
+/public/sw.js.map
+
 .agents/
 skills-lock.json
 
