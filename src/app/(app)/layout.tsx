@@ -4,6 +4,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ResendEmailButton } from "@/components/auth/resend-email-button";
+import { Button } from "@/components/ui/button";
 
 export default async function DashboardLayout({
   children,
@@ -29,6 +30,16 @@ export default async function DashboardLayout({
           </Link>
 
           <div className="flex items-center gap-4">
+            {session.user.role === "ADMIN" && (
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/admin" />}
+              >
+                Admin
+              </Button>
+            )}
             <span className="text-sm text-muted-foreground">
               {session.user.name}
             </span>

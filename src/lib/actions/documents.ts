@@ -241,7 +241,11 @@ export async function submitApplication(
     return { error: "Application not found." };
   }
 
-  if (application.status !== "DRAFT") {
+  // Same statuses as upload/replace/delete (canUploadInStatus): DRAFT is the
+  // first submission, REJECTED/NEEDS_REVISION is a resubmission after the
+  // applicant has acted on admin feedback. PENDING_REVIEW and APPROVED are
+  // not resubmittable — one is already in the queue, the other is done.
+  if (!canUploadInStatus(application.status)) {
     return { error: "This application has already been submitted." };
   }
 

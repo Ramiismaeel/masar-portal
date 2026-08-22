@@ -14,12 +14,18 @@ import {
   type Requirement,
 } from "@/lib/checklists";
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
+import { DOCUMENT_REVIEW_STATUS_META } from "@/lib/document-review-status";
 import { UploadControl } from "@/components/checklist/upload-control";
 import { SubmitApplicationButton } from "@/components/checklist/submit-application-button";
 import { DeleteDocumentControl } from "@/components/checklist/delete-document-control";
 import { DeleteApplicationControl } from "@/components/checklist/delete-application-control";
+import type { ReviewStatus } from "@/generated/prisma/client";
 
-type UploadedDocument = { fileName: string };
+type UploadedDocument = {
+  fileName: string;
+  reviewStatus: ReviewStatus;
+  adminNote: string | null;
+};
 
 export default async function ApplicationPage({
   params,
@@ -41,7 +47,14 @@ export default async function ApplicationPage({
       status: true,
       currentStep: true,
       data: true,
-      documents: { select: { requirementCode: true, fileName: true } },
+      documents: {
+        select: {
+          requirementCode: true,
+          fileName: true,
+          reviewStatus: true,
+          adminNote: true,
+        },
+      },
     },
   });
 
@@ -121,7 +134,11 @@ export default async function ApplicationPage({
           ))}
         </ul>
 
-        {application.status === "DRAFT" && progress.canSubmit && (
+        {/* canUpload's status set doubles as "resubmittable" — DRAFT is the
+            first submission, REJECTED/NEEDS_REVISION is a resubmission after
+            the applicant has acted on admin feedback. submitApplication
+            enforces the same set server-side. */}
+        {canUpload && progress.canSubmit && (
           <SubmitApplicationButton applicationId={application.id} />
         )}
 
@@ -240,7 +257,24 @@ function RequirementRow({
             Optional
           </span>
         )}
+
+        {/* An admin decision on THIS file — separate from the Optional tag
+            above, which is a checklist property, not a review outcome. */}
+        {document && document.reviewStatus !== "PENDING" && (
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${DOCUMENT_REVIEW_STATUS_META[document.reviewStatus].className}`}
+          >
+            {DOCUMENT_REVIEW_STATUS_META[document.reviewStatus].labelEn}
+          </span>
+        )}
       </div>
+
+      {document?.adminNote && (
+        <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Note from Masar: </span>
+          {document.adminNote}
+        </p>
+      )}
 
       {canUpload && (
         <UploadControl

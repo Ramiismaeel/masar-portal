@@ -64,22 +64,91 @@ Any page added under `(app)` is protected by construction.
 - [x] **Phase 5** Uploads: validate → Cloudmersive → R2. See "Uploads" below for the pipeline,
       the replace/versioning decision, and what's still missing (delete, admin review, submit
       hasn't been exercised for real — see Immediate next steps).
-- [ ] **Phase 6** Admin dashboard: review, per-file notes, notification emails.
+- [x] **Phase 6** Admin dashboard: role-gated `/admin`, per-document review (approve/reject/
+      request-changes + note), application-level decision, notification email, resubmission
+      loop. See "Admin dashboard" below.
 - [ ] **Phase 7** i18n (EN/AR) & PWA.
 - [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
 - [ ] **Phase 9** API docs for the mobile app.
 
 ## Immediate next steps
-1. Confirm submission end-to-end: click "Submit application" for real on a fully-uploaded
-   application and verify it moves to `PENDING_REVIEW`. Not yet done — there is no "revert to
-   draft" action, so testing this makes a real, currently one-way status change.
-2. Decide whether a "delete document" action is needed before Phase 6, or whether replace
-   (upload again) is enough for launch — not built either way yet.
-3. Phase 6: admin dashboard. Nothing on the review side exists — `reviewStatus` and `adminNote`
-   are columns with no UI reading or writing them yet.
+1. **No way to change a decision once made.** `decideApplication` only runs from
+   `PENDING_REVIEW` — an admin who mis-clicks Approve/Reject has no undo. The applicant would
+   need to be talked into... there's no path back at all from `APPROVED`, since nothing in the
+   app ever un-approves. Worth a hard look before this is used for anything real.
+2. **Wizard answers (name, phone, passport, instructionLanguage/medicalProfession) still aren't
+   editable during `NEEDS_REVISION`/`REJECTED`** — only documents are. `saveIdentityStep`/
+   `saveQuestionStep` in `src/lib/actions/wizard.ts` still gate on `status === "DRAFT"` exactly.
+   If an admin ever rejects on a wizard-answer problem (wrong profession, expired passport
+   number typo) rather than a document problem, the applicant has no way to fix it. Not touched
+   this phase — the review UI has no way to express "the answer is wrong," only "the file is
+   wrong."
+3. Per-document review and the application-level decision are **intentionally uncoupled** — an
+   admin can Approve the whole application without having reviewed any individual document, or
+   flag every document NEEDS_REVISION and still click Approve. No software gate stops a
+   contradictory decision; it's trusted admin judgement. Revisit if that turns out to be a
+   problem in practice.
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
+
+## Admin dashboard (Phase 6, Aug 2026)
+- **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |
+  `ADMIN`) on `User`, exposed as a Better Auth `additionalField`. There is no admin-invite UI —
+  granting it means editing the row directly (Prisma Studio or SQL). Documented as a known gap,
+  not solved this phase; fine while it's just us.
+- **Route**: `src/app/admin/` (not a route group — `/admin` in the URL is the point, unlike
+  `(app)`/`(auth)` which hide their segment). `admin/layout.tsx` is the security boundary,
+  checking session **and** `role === "ADMIN"` — same "layout, never middleware" reasoning as
+  `(app)`. A signed-out visitor goes to `/login`; a signed-in non-admin goes to `/dashboard`, not
+  `/login` — they don't need telling to log in, they're already in, they just lack the role.
+  `requireAdminSession()` (`src/lib/admin.ts`) re-checks independently inside every admin Server
+  Action — the layout protects pages, not the actions, same principle as everywhere else in this
+  app.
+- **Two independent decisions, not one.** Per-document review (`reviewDocument`: APPROVED /
+  REJECTED / NEEDS_REVISION + `adminNote`, only while the application is `PENDING_REVIEW`) is
+  separate from the application-level decision (`decideApplication`, same three outcomes). The
+  per-document note is the substantive feedback the applicant sees next to the specific file;
+  the application decision is what actually moves `Application.status` and fires the email.
+  Deliberately not cross-validated against each other — see Immediate next steps #3.
+- **Files are never public.** The R2 bucket stays private; an admin viewing a document gets a
+  10-minute presigned `GetObjectCommand` URL generated server-side at render time
+  (`getDocumentDownloadUrl` in `src/lib/r2.ts`, needs `@aws-sdk/s3-request-presigner`). A copied
+  link stops working on its own well before it could be reused as a standing hole into someone's
+  passport scan.
+- **Resubmission loop closed**: `submitApplication` (`src/lib/actions/documents.ts`) now accepts
+  the same status set as uploads (`canUploadInStatus`: DRAFT, REJECTED, NEEDS_REVISION), not just
+  DRAFT — previously a rejected/needs-revision application could never be resubmitted at all.
+  **Caught a matching frontend bug while testing live**: the Submit button on
+  `/applications/[id]` was still gated to `application.status === "DRAFT"` only, so even with the
+  backend fixed, there was no button to click after a revision. Fixed to use the same
+  `canUpload` check as everything else on that page.
+- **Applicant-facing checklist now shows review outcomes**: each row renders the document's
+  `reviewStatus` badge (when not `PENDING`) and `adminNote` (`DOCUMENT_REVIEW_STATUS_META` in
+  `src/lib/document-review-status.ts`, same keyed-by-enum pattern as `APPLICATION_STATUS_META`).
+  Replacing a flagged file resets both to `PENDING`/`null` (already built in Phase 5's upsert) —
+  confirmed live that this clears the badge and note correctly.
+- **Notification email** (`src/lib/emails/application-decision.ts`) is generic by decision type
+  (Approved / Changes requested / Rejected) and does **not** carry a free-text admin message —
+  deliberately no new schema field for that. Per-document `adminNote` is the one source of truth
+  for "what's wrong"; the email just points back to the dashboard. A failed send never blocks or
+  undoes the decision (`.catch()`, same pattern as `onExistingUserSignUp`'s mailer).
+- **Verified live, full loop, not just typechecked**: submitted a real application → reviewed
+  each document (one flagged NEEDS_REVISION with a note, four approved) → made the application
+  decision → confirmed the applicant saw the exact note next to the exact file → replaced that
+  file (note/badge cleared) → resubmitted → confirmed it landed back in the admin's Pending
+  queue. Separately approved a second application and confirmed it appears under the Approved
+  tab. Also confirmed the presigned download link 404s correctly on a stale key and succeeds on
+  a freshly uploaded one (see the R2 bucket-rename note below — that failure was expected, not a
+  bug).
+- **Found mid-testing, not a code bug**: `S3_BUCKET` changed from `masar-portal-documents` to
+  `masar-portal-documents-dev` at some point after Phase 5 was first tested. Documents uploaded
+  under the old bucket name now 404 (`NoSuchKey`) on their presigned URL — the DB row and its
+  `storageKey` are still correct, the object just isn't in the bucket the app now points at.
+  Confirmed this by re-uploading fresh and getting a working link immediately. No data was lost
+  in the sense that matters (all affected rows were this session's own test uploads), but this is
+  worth knowing about if it ever happens against real data: **a bucket rename orphans every
+  existing `storageKey`** with no migration path built for it.
 
 ## Uploads (Phase 5, Aug 2026)
 - Pipeline is synchronous and enforced in one Server Action (`src/lib/actions/documents.ts`):
@@ -114,16 +183,37 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   from the applicant's point of view (the request never reaches the Server Action to explain why).
 - **`submitApplication`** (same file) flips `DRAFT` → `PENDING_REVIEW` once
   `checklistProgress().canSubmit` is true. Button only renders when that's already true — the
-  gate is enforced again server-side regardless. **Not yet clicked for real** — see Immediate
-  next steps.
+  gate is enforced again server-side regardless. **Confirmed live** — a real application was
+  submitted and correctly landed in `PENDING_REVIEW`, which correctly locked out its upload,
+  replace, and delete controls (see below).
+- **`deleteDocument`**: allowed in the same statuses as upload (`canUploadInStatus`). Deletes the
+  `Document` row first, then best-effort deletes the R2 object — DB is the source of truth for
+  "is this uploaded", so a failed storage delete leaves an orphaned object, never a wrong
+  checklist. Confirmed live.
+- **`deleteApplication`**: `DRAFT` only — narrower than upload/delete-document on purpose, since
+  `REJECTED`/`NEEDS_REVISION` means an admin has already seen it once. Relies on the schema's
+  existing `onDelete: Cascade` to remove `Document` rows, then best-effort deletes each R2
+  object, then redirects to `/dashboard`. Confirmed live — the category becomes available to
+  start again immediately after (the `userId_category` unique constraint frees up).
+- Both delete actions use an inline two-step confirm ("Delete" → "Remove? Confirm/Cancel") built
+  by hand rather than a native `confirm()` dialog or a modal library — no new UI dependency, and
+  it stays keyboard/screen-reader friendly. `src/components/checklist/delete-document-control.tsx`,
+  `delete-application-control.tsx`.
+- **Upload is auto-submit, not click-to-submit**: the file input's `onChange` calls
+  `event.currentTarget.form.requestSubmit()` — there's nothing to review before committing (no
+  preview, nothing partial worth pausing on), so a separate "Upload" button was pure friction,
+  worse on a phone. `UploadControl` is keyed by the current filename so a successful
+  upload/replace/delete remounts it with a clean file input rather than showing a stale "chosen"
+  file. `src/components/checklist/upload-control.tsx`.
+- **Bilingual labels, not i18n**: each checklist row now renders `requirement.labelAr` under
+  `labelEn`, wrapped in `dir="rtl"` to isolate that span's shaping — the page itself stays LTR
+  until Phase 7 builds a real language switch. `labelAr` was already sitting in `checklists.ts`
+  unused; this just stops discarding it.
 - Cloudmersive call is a raw `fetch` (`src/lib/virus-scan.ts`), not their client SDK — one
   endpoint, not worth a generated-client dependency for.
-- Verified live against the real dev database (not just typechecked): create, replace
-  (old object superseded, no duplicate row, counter stays correct), and the submit button
-  appearing only once 5/5 required documents are in.
-
-Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
-`medicalProfession` (Medical). Everything else is information for staff.
+- Verified live against the real dev database throughout (not just typechecked): create, replace
+  (old object superseded, no duplicate row, counter stays correct), reject-on-bad-mime-type,
+  submit, delete-document, and delete-application.
 
 ## Security decisions (do not regress)
 - `role` / `locale` are Better Auth `additionalFields` with **`input: false`** — otherwise a
@@ -144,6 +234,12 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   `uploadDocument` (`src/lib/actions/documents.ts`) — see "Uploads" below.
 - Documents are only uploadable/replaceable in `DRAFT`, `REJECTED`, `NEEDS_REVISION`
   (`canUploadInStatus()`) — never `PENDING_REVIEW` or `APPROVED`.
+- `/admin` is gated by session **and** `role === "ADMIN"`, checked in the layout and
+  independently re-checked in every admin Server Action (`requireAdminSession()`) — a layout
+  redirect protects pages, not the Server Action HTTP endpoints themselves. See "Admin dashboard"
+  below.
+- The R2 bucket is never public. Admins view a document via a 10-minute presigned URL generated
+  server-side, not a public bucket path or a permanent link.
 
 ## Signup enumeration (found & fixed Aug 2026)
 `api/routes/sign-up.mjs` line 163:
