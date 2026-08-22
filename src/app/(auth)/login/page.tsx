@@ -9,12 +9,17 @@ import { LoginForm } from "@/components/auth/login-form";
  * /dashboard, not / (home). Home is the public front door; landing on
  * /login means they were already trying to get into the app.
  */
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (session?.user) {
     redirect("/dashboard");
   }
 
-  return <LoginForm />;
+  return <LoginForm initialSocialError={error} />;
 }

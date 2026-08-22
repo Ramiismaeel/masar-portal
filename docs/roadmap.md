@@ -72,8 +72,16 @@ Any page added under `(app)` is protected by construction.
 - [x] **SEO/meta pass** (Aug 2026, between Phase 7 and 8) — locale-aware title/description/OG/
       Twitter cards, `noindex` on every authenticated section, `robots.txt` + `sitemap.xml`. See
       "SEO" below.
-- [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
-- [ ] **Phase 9** API docs for the mobile app.
+- [x] **Phase 8** Legal & brand shell — Impressum, portal-specific Datenschutz (EN/AR), cookie
+      consent banner, legal links wired into every layout. See "Legal & brand shell" below.
+- [x] **Phase 9** Auth providers — Google sign-in/signup. See "Google OAuth" below. Code and UI
+      are done; **Rami still needs to add real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`** to
+      local `.env` and Vercel (preview + prod) before it actually works anywhere.
+- [ ] **Phase 10** Visual identity — dark/light mode, imagery, animation, header/footer redesign
+      matching masar-center.de.
+- [ ] **Phase 11** GDPR follow-through — self-service delete account, retention limits, audit log,
+      bulk ZIP export. (Was "Phase 8" before the roadmap split — renumbered, not dropped.)
+- [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
 
 ## Immediate next steps
 1. **No way to change a decision once made.** `decideApplication` only runs from
@@ -97,6 +105,57 @@ Any page added under `(app)` is protected by construction.
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
+
+## Google OAuth (Phase 9, Aug 2026)
+- **One shared Google OAuth client across all three environments** (Rami's choice over one client
+  per environment) — a single `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` pair, same value in local
+  `.env`, Vercel preview, and Vercel prod, with all three redirect URIs
+  (`.../api/auth/callback/google` for localhost, the preview domain, and `portal.masar-center.de`)
+  registered on the one Google Cloud OAuth client. Deliberately *not* mirroring how
+  `BETTER_AUTH_SECRET` is isolated per environment — simpler to run solo, revisit if that ever
+  stops being true.
+- **Account-linking behaviour verified by reading `node_modules/better-auth/dist/oauth2/
+  link-account.mjs` directly, not assumed from docs** — same "trust the source" standard already
+  applied to email verification and the signup-enumeration fix. No `account.accountLinking`
+  config was added; Better Auth's *default* behaviour already does the safe thing here:
+  - A Google sign-in whose email matches an existing local user **auto-links** (creates an
+    `Account` row on the existing `User`) only when that user's own `emailVerified` is already
+    `true` (`requireLocalEmailVerified` defaults to `true`). Google itself always reports its own
+    email as verified, so the provider side is never what blocks a link.
+  - If the local account is **not** verified yet, linking is refused — the callback redirects to
+    `errorCallbackURL` with `?error=account_not_linked`, which `LoginForm` maps to a specific
+    translated message telling them to log in with their password and verify email first (Google
+    sign-in then works automatically afterward, no separate "link your accounts" flow needed).
+  - This is not an enumeration vector the same way the email/password forms were: triggering it at
+    all requires already controlling a real Google account with that exact email, a materially
+    higher bar than typing an address into a form.
+- **New user via Google needs no verification email and no "check your inbox" step** — unlike
+  email/password signup (`autoSignIn: false`, deliberately no session — see "Signup enumeration"
+  below), a brand-new Google sign-up gets `emailVerified: true` and a session immediately, since
+  Google already vouches for the address. `role`/`locale` still come from `User`'s Prisma
+  defaults / Better Auth `additionalFields` exactly as for email signup — nothing provider-specific
+  needed there, confirmed by reading `handleOAuthUserInfo`'s `createUser` call.
+- **UI**: `GoogleSignInButton` (`src/components/auth/google-sign-in-button.tsx`) is one shared
+  component used by both `LoginForm` and `SignupForm`, calling
+  `authClient.signIn.social({ provider: "google", callbackURL: "/dashboard", errorCallbackURL:
+  "/login" })`. Better Auth's client does the actual `window.location` redirect to Google itself
+  on success — the component only needs to handle a failure *before* that redirect (e.g. a
+  provider-not-configured 500, which is exactly what happens right now with no real
+  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set — confirmed live, see below). A failure *after*
+  Google redirects back arrives as `?error=...` on `/login` instead, read server-side in
+  `(auth)/login/page.tsx` and passed into `LoginForm` — same "read searchParams in the Server
+  Component, not `useSearchParams()`" convention `/verify-email` already established.
+- Error codes off the OAuth callback are **lowercase snake_case** (`account_not_linked`,
+  `unable_to_link_account`, …) — read from `OAUTH_CALLBACK_ERROR_CODES` in
+  `node_modules/better-auth/dist/oauth2/errors.mjs`. Unlike the email-verification flow's
+  uppercase codes, this one really is lowercase in both docs and code — no docs/code mismatch here.
+- Verified live (Arabic, dev server): both `/login` and `/signup` render the divider + Google
+  button correctly, RTL-mirrored; clicking it with no real Google credentials set hits
+  `POST /api/auth/sign-in/social` → 500 (`BetterAuthError: CLIENT_ID_AND_SECRET_REQUIRED`, logged
+  server-side) and the button surfaces the translated `errorSocialGeneric` message rather than a
+  raw English string or a silent failure. **Not yet verified**: an actual successful Google
+  handshake, or the `account_not_linked` redirect path — both need real credentials, which Rami
+  still has to create in Google Cloud Console and add to `.env`/Vercel (see Phase 9 above).
 
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
@@ -363,6 +422,104 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   both come back **static** (`○`) in a production build despite the rest of the app being
   fully dynamic.
 
+## Legal & brand shell (Phase 8, Aug 2026)
+- **Scope decision, made explicitly before building anything**: the original 9-phase roadmap had
+  no room for "Google sign-in" + "major visual redesign" as one lump. Split into four: Phase 8
+  (this one — Impressum/Datenschutz/cookie consent, since Google's OAuth consent screen wants a
+  real privacy policy URL, and there wasn't one), Phase 9 (Google OAuth, now unblocked), Phase 10
+  (the visual redesign itself — dark/light, imagery, animation, header/footer), Phase 11/12 (the
+  old Phase 8/9, renumbered, not dropped).
+- **Content is adapted from masar-center.de's own live `/impressum` and `/privacy` pages** (fetched
+  directly, not guessed), not copied wholesale — same reasoning as the SEO pass: this is the same
+  legal entity (Masar UG) so the Impressum's register/contact details carry over as-is, but the
+  Datenschutz (privacy policy) is **portal-specific, not a copy of the marketing site's**. The
+  marketing site's policy covers a public brochure site (contact forms, Google Analytics/GTM, Meta/
+  WhatsApp Business) — this portal collects a fundamentally different, more sensitive set of data
+  (passports, criminal record extracts, medical reports) and, confirmed by grepping the codebase,
+  has **zero analytics/tracking** anywhere. The portal's own Datenschutz names its own real
+  processors (Neon, Cloudflare R2, Cloudmersive, Resend, Vercel) and its own real data categories,
+  read from `prisma/schema.prisma` and `src/lib/checklists.ts` directly rather than assumed.
+- **Two kinds of bilingual content, and this is a third one, deliberately not reusing either
+  existing mechanism**: UI copy → `next-intl` messages; bilingual domain data → `pick()`. Long-form
+  legal prose is neither — too unwieldy as ICU-templated JSON strings, and not simple label pairs
+  either. `src/components/legal/{impressum,datenschutz}-{en,ar}.tsx` are plain JSX content
+  components, chosen per-page via `getLocale()` the same way `/impressum/page.tsx` and
+  `/datenschutz/page.tsx` pick between them — same "explicit locale, no ambient surprises" shape as
+  every other bilingual component in this app, just content-shaped instead of data-shaped.
+- **Cookie consent banner built ahead of actual need, at Rami's explicit request.** The portal sets
+  no non-essential cookies today (only Better Auth's session cookie and the locale-preference
+  cookie, both "strictly necessary"/functional and exempt from consent under GDPR/ePrivacy on their
+  own) — a banner is not legally required yet. Built anyway so a future analytics addition has
+  something to plug into (`hasAnalyticsConsent()` in `src/lib/cookie-consent.ts`) rather than
+  needing a consent system retrofitted later. `"necessary"` and `"all"` behave identically right
+  now — there is nothing optional to withhold yet.
+  - Same pattern as `LocaleSwitcher`/`setLocale`: a Server Action sets a plain cookie
+    (`src/lib/actions/cookie-consent.ts`), the client component calls it then `router.refresh()`
+    — no local dismissed-state to keep in sync with the real cookie, the server-read prop is the
+    only source of truth (`CookieConsentBanner`'s `initialConsent`, read in the root layout).
+  - **"Cookie settings"** in the footer (`CookieSettingsLink`) just deletes the cookie server-side
+    and refreshes — confirmed live that this makes the banner reappear correctly, both from a fresh
+    "Accept all" state and from a fresh page load.
+- **Legal links wired into every layout, not just the home page** — German Impressumspflicht
+  requires the Impressum reachable within ~2 clicks from anywhere on the site. Found live: only
+  `home-content.tsx`'s own footer had them (a `TODO` comment sitting there since Phase 3/4);
+  `(app)/layout.tsx` and `(auth)/layout.tsx` had no footer at all. Extracted the shared bit into
+  `LegalFooter` (`src/components/legal-footer.tsx`, explicit `locale` prop, same convention as
+  every other component `home-content.tsx` renders) and added a footer to all three layouts.
+  Deliberately **not** added to `admin/layout.tsx` — same "admin is a different, staff-only,
+  out-of-scope lane" reasoning already applied to i18n; it's gated behind auth+role, not a publicly
+  reachable page Impressumspflicht is aimed at.
+- **Three real, unresolved gaps flagged in the policy text itself, not silently glossed over**
+  (Section 4's gap closed the same week — see "Sensitive-document consent checkbox" below):
+  1. Section 6 names Cloudmersive and Resend as processors without a confirmed data-processing
+     region — unlike Neon/R2/Vercel, which this project's own env config and CLAUDE.md already
+     pin to the EU. Worth confirming both have a signed DPA and, if they process outside the
+     EU/EEA, that Standard Contractual Clauses are actually in place — the policy text says this is
+     relied on, so it needs to be true, not just written.
+  2. **Also flagged, not resolved**: the Impressum's "Represented by" lists only Morhaf Esmail as
+     Geschäftsführer, matching the source page exactly — even though masar-center.de's own "About
+     us" page names Rami as a co-founder too. Left as the one name that matches the legally filed
+     register entry rather than the marketing copy; worth Rami confirming this is still accurate.
+  3. No VAT ID (USt-IdNr.) appears on the source Impressum, only a Steuernummer — consistent with
+     small-business (§19 UStG) status, but not verified, just carried over as-is.
+- Verified live against a real production build (`next build` + `next start`), not dev mode: both
+  pages confirmed rendering correctly in Arabic (RTL, all 12 Datenschutz sections, all Impressum
+  sections) and in English (LTR); the cookie banner shows once, "Accept all" dismisses it and it
+  stays dismissed across a reload, "Cookie settings" in the footer reliably reopens it; footer
+  links confirmed present and correctly pointing at `/impressum`/`/datenschutz` on the home page,
+  `(app)/dashboard`, and via redirect-when-signed-in on `/login` (confirming `(auth)/layout.tsx`'s
+  footer too, since a signed-in visitor never actually sees the auth pages themselves).
+
+### Sensitive-document consent checkbox (Phase 8 follow-up, Aug 2026)
+- Closes gap #1 above: uploading a criminal record extract or medical report was Section 4's
+  *stated* consent mechanism, but no real opt-in ever existed anywhere in the app. Scoped to
+  **Medical (D16) only** — the one category that ever collects `CRIMINAL_RECORD` or
+  `MEDICAL_REPORT` (checked `src/lib/checklists.ts`) — rather than a checkbox every applicant sees
+  regardless of relevance.
+- **One checkbox, at wizard time, not per-upload** (Rami's choice over a per-file checkbox on the
+  checklist page) — added to the Medical question step (`QuestionStep`,
+  `src/components/wizard/question-step.tsx`), the same step that already asks profession, rather
+  than a new wizard step. `needsSensitiveDataConsent(category)` in `src/lib/wizard.ts` is the one
+  place that decides which categories need it.
+- **Recorded, not just gated** — `Application.sensitiveDataConsentAt DateTime?` (migration
+  `add_sensitive_data_consent`). A timestamp, not a boolean, so there's an actual audit trail of
+  *when* consent was given, not just that it was — matters for GDPR accountability on data this
+  sensitive.
+- **Set once, on the null → given transition, never overwritten.** `saveQuestionStep`
+  (`src/lib/actions/wizard.ts`) only requires and only writes the checkbox when
+  `sensitiveDataConsentAt` is still null; once given, later saves (e.g. changing the profession
+  answer) don't force re-consent, and the checkbox comes back pre-checked and disabled
+  (`sensitiveConsentGiven` prop) reflecting the stored value rather than local UI state.
+- Section 4 of the Datenschutz (`datenschutz-en.tsx` / `-ar.tsx`) rewritten to describe the real
+  checkbox instead of "uploading is consent," with a `#sensitive-documents` anchor the checkbox's
+  label links to (same "server owns the source of truth" pattern already used for the cookie
+  banner's `#cookies` anchor).
+- Verified live against the dev database, in Arabic (not just typechecked): the checkbox renders
+  only for a Medical draft application; submitting with a profession chosen but the box unchecked
+  blocks with a field error and does not save; checking it saves, sets
+  `sensitiveDataConsentAt`, and lands on the checklist; revisiting the question step afterward
+  shows the checkbox pre-checked, disabled, and the previously-chosen profession still selected.
+
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |
   `ADMIN`) on `User`, exposed as a Better Auth `additionalField`. There is no admin-invite UI —
@@ -617,6 +774,8 @@ through `/login` → existing Resend button.
   `sendVerificationEmail` is unauthenticated and sends real mail, this is an open Resend-quota
   abuse vector. TODO before launch: give `rateLimit` a shared store (Upstash/Redis via
   `secondaryStorage`) or a DB-backed store.
+- Social sign-in (`signIn.social`, OAuth callback error codes, default account-linking rules) —
+  see "Google OAuth" above.
 
 ## Open questions for Masar
 Only one left: confirm applicants do **not** upload motivation letter, Europass CV, visa
@@ -627,6 +786,10 @@ requirements table.)
 ## Env vars
 `DATABASE_URL` (pooled), `DIRECT_URL` (unpooled), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
 `RESEND_API_KEY`, `EMAIL_FROM`. Logo URL is hard-coded in code (public, not secret).
+
+Google OAuth (Phase 9): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — **not yet set anywhere**, one
+shared client across local/preview/prod (see "Google OAuth" above). Until these are real, the
+Google button 500s with `CLIENT_ID_AND_SECRET_REQUIRED`.
 
 R2 / Cloudmersive (Phase 5): `S3_ENDPOINT` (full bucket URL — see the endpoint gotcha under
 "Uploads"), `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,

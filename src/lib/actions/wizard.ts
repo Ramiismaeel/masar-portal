@@ -12,6 +12,7 @@ import {
   hasQuestionStep,
   isInstructionLanguage,
   isMedicalProfession,
+  needsSensitiveDataConsent,
   parseAnswers,
   totalSteps,
   type WizardStepState,
@@ -48,6 +49,7 @@ export async function loadOwnedApplication(applicationId: unknown) {
       status: true,
       currentStep: true,
       data: true,
+      sensitiveDataConsentAt: true,
     },
   });
 
@@ -216,14 +218,34 @@ export async function saveQuestionStep(
     answers.instructionLanguage = answer;
   }
 
+  // Set only on the transition from "no consent" to "consent given" — never
+  // overwritten by a later save, so it stays proof of the *first* consent.
+  let sensitiveDataConsentAt: Date | undefined;
+
   if (application.category === "MEDICAL") {
+    const fieldErrors: Record<string, string> = {};
+
     if (!isMedicalProfession(answer)) {
-      return {
-        error: null,
-        fieldErrors: { answer: "Choose your profession." },
-      };
+      fieldErrors.answer = "Choose your profession.";
+    } else {
+      answers.medicalProfession = answer;
     }
-    answers.medicalProfession = answer;
+
+    if (needsSensitiveDataConsent(application.category)) {
+      const alreadyConsented = application.sensitiveDataConsentAt !== null;
+      const consented = formData.get("sensitiveDataConsent") === "on";
+
+      if (!alreadyConsented && !consented) {
+        fieldErrors.sensitiveDataConsent =
+          "You must consent to processing your sensitive documents to continue.";
+      } else if (!alreadyConsented) {
+        sensitiveDataConsentAt = new Date();
+      }
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      return { error: null, fieldErrors };
+    }
   }
 
   try {
@@ -231,6 +253,7 @@ export async function saveQuestionStep(
       where: { id: application.id },
       data: {
         data: answers,
+        ...(sensitiveDataConsentAt && { sensitiveDataConsentAt }),
         currentStep: Math.max(
           application.currentStep,
           totalSteps(application.category),

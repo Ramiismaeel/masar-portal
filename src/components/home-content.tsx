@@ -5,6 +5,7 @@ import { CATEGORIES } from "@/lib/categories";
 import { CategoryCard } from "@/components/category-card";
 import { Button } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { LegalFooter } from "@/components/legal-footer";
 import type { Locale } from "@/i18n/locale";
 
 /**
@@ -174,14 +175,8 @@ export async function HomeContent({
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <p>{t("footerRights", { year: new Date().getFullYear() })}</p>
-          <nav className="flex flex-wrap gap-4">
-            {/* TODO: real pages. An Impressum is a legal expectation for a company registered in Germany. */}
-            <Link href="/impressum" className="hover:text-foreground">
-              {t("impressum")}
-            </Link>
-            <Link href="/datenschutz" className="hover:text-foreground">
-              {t("privacy")}
-            </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <LegalFooter locale={locale} />
             <a
               href="https://masar-center.de"
               className="hover:text-foreground"
@@ -190,7 +185,7 @@ export async function HomeContent({
             >
               masar-center.de
             </a>
-          </nav>
+          </div>
         </div>
       </footer>
     </div>

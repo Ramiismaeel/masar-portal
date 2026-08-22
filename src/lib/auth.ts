@@ -11,6 +11,21 @@ export const auth = betterAuth({
   }),
   trustedOrigins: [process.env.BETTER_AUTH_URL!],
 
+  // Default account-linking behaviour (no `account.accountLinking` override
+  // needed — verified in shipped code, not docs): a Google sign-in auto-links
+  // to an existing user by email ONLY when that user's own emailVerified is
+  // already true. An unverified local account blocks the link and the
+  // callback redirects to errorCallbackURL with ?error=account_not_linked —
+  // see GoogleSignInButton and LoginForm's handling of it. Google itself
+  // always reports emailVerified: true, so the provider side is never the
+  // blocker.
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+  },
+
   emailAndPassword: {
     enabled: true,
     // Closes the signup enumeration leak. With this false, better-auth returns a

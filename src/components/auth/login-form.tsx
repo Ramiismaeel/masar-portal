@@ -10,13 +10,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
-export function LoginForm() {
+/**
+ * Maps the `?error=` code a failed Google OAuth callback redirects back with
+ * (src/lib/auth.ts has the full account-linking explanation). Codes are
+ * lowercase snake_case — verified in better-auth's own source, unlike the
+ * email-verification flow's uppercase codes. `account_not_linked` is the one
+ * case worth a specific message; every other code is a generic failure.
+ */
+function socialErrorMessage(
+  code: string,
+  t: (key: "errorAccountNotLinked" | "errorSocialGeneric") => string,
+): string {
+  if (code === "account_not_linked") return t("errorAccountNotLinked");
+  return t("errorSocialGeneric");
+}
+
+export function LoginForm({
+  initialSocialError,
+}: {
+  initialSocialError?: string;
+}) {
   const t = useTranslations("Auth.Login");
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    initialSocialError ? socialErrorMessage(initialSocialError, t) : null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,6 +135,19 @@ export function LoginForm() {
               {isSubmitting ? t("submitting") : t("submit")}
             </Button>
           </form>
+
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">{t("orContinueWith")}</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <GoogleSignInButton
+            label={t("continueWithGoogle")}
+            callbackURL="/dashboard"
+            onError={() => setError(t("errorSocialGeneric"))}
+          />
+
           <p className="mt-4 text-center text-sm">
             {t("noAccount")}{" "}
             <Link

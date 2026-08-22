@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ResendEmailButton } from "@/components/auth/resend-email-button";
 import { Button } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { LegalFooter } from "@/components/legal-footer";
+import type { Locale } from "@/i18n/locale";
 
 // Everything under (app) is a signed-in user's own applications and
 // documents — no reason for it to be crawled or indexed, and every reason
@@ -31,9 +33,10 @@ export default async function DashboardLayout({
   }
 
   const t = await getTranslations("AppLayout");
+  const locale = (await getLocale()) as Locale;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <Link href="/">
@@ -77,7 +80,13 @@ export default async function DashboardLayout({
         </div>
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+
+      <footer className="border-t border-border">
+        <div className="mx-auto w-full max-w-5xl px-4 py-6">
+          <LegalFooter locale={locale} />
+        </div>
+      </footer>
     </div>
   );
 }

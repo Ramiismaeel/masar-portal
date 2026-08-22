@@ -58,6 +58,15 @@ export function hasQuestionStep(category: CategoryValue): boolean {
   return category === "STUDENT" || category === "MEDICAL";
 }
 
+/**
+ * Only Medical (D16) applications ever include a criminal record extract or a
+ * medical report — the two document types Datenschutz §4 treats as Art. 9/10
+ * GDPR sensitive data. Every other category never sees this checkbox.
+ */
+export function needsSensitiveDataConsent(category: CategoryValue): boolean {
+  return category === "MEDICAL";
+}
+
 export function totalSteps(category: CategoryValue): number {
   return hasQuestionStep(category) ? 2 : 1;
 }

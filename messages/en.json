@@ -13,6 +13,24 @@
   "Common": {
     "backToDashboard": "Back to dashboard"
   },
+  "Footer": {
+    "impressum": "Impressum",
+    "privacy": "Privacy",
+    "cookieSettings": "Cookie settings"
+  },
+  "CookieConsent": {
+    "title": "We use cookies",
+    "body": "We use strictly necessary cookies to keep you signed in and remember your language — these don't need your consent under GDPR/ePrivacy. We do not currently use analytics or advertising cookies; if that ever changes, we will ask you again before doing so.",
+    "acceptAll": "Accept all",
+    "necessaryOnly": "Necessary only",
+    "learnMore": "Learn more"
+  },
+  "LegalPage": {
+    "backToHome": "Back to home",
+    "lastUpdated": "Last updated: {date}",
+    "impressumTitle": "Impressum",
+    "privacyTitle": "Privacy Policy"
+  },
   "AppLayout": {
     "admin": "Admin",
     "myDashboard": "My dashboard",
@@ -33,9 +51,7 @@
     "step2Body": "A short form, two steps. It takes about two minutes on a phone.",
     "step3Title": "Upload your documents",
     "step3Body": "You get a personalised checklist. Masar reviews each file and tells you what is missing.",
-    "footerRights": "© {year} Masar Center",
-    "impressum": "Impressum",
-    "privacy": "Privacy"
+    "footerRights": "© {year} Masar Center"
   },
   "CategoryCard": {
     "start": "Start"
@@ -58,6 +74,8 @@
     "studentHint": "If it is taught in English, you will also need an English language certificate.",
     "medicalLegend": "What is your profession?",
     "medicalHint": "Doctors are asked for one extra document (بيان معاودة).",
+    "sensitiveConsentLabel": "I consent to Masar Center processing the criminal record extract and medical report I will upload for this application, as described in the",
+    "sensitiveConsentLink": "Privacy Policy",
     "stepOf": "Step {current} of {total}",
     "fullNameLatin": "Full name (Latin letters)",
     "fullNameLatinPlaceholder": "As printed in your passport",
@@ -124,6 +142,9 @@
       "errorPasswordMatch": "Passwords do not match",
       "errorGeneric": "Something went wrong. Please try again.",
       "errorSignupFallback": "Could not create your account. Please try again.",
+      "orContinueWith": "Or continue with",
+      "continueWithGoogle": "Continue with Google",
+      "errorSocialGeneric": "Google sign-in failed. Please try again.",
       "checkInboxTitle": "Check your inbox",
       "checkInboxBody": "If {email} isn't already registered, we've sent a verification link to it. Click the link to verify your address, then sign in.",
       "goToLogin": "Go to login"
@@ -140,7 +161,11 @@
       "errorRequired": "All fields are required",
       "errorEmail": "Please enter a valid email address",
       "errorInvalid": "Invalid email or password",
-      "errorGeneric": "Something went wrong. Please try again."
+      "errorGeneric": "Something went wrong. Please try again.",
+      "orContinueWith": "Or continue with",
+      "continueWithGoogle": "Continue with Google",
+      "errorAccountNotLinked": "An account with this email already exists but hasn't been verified yet. Log in with your password and verify your email first — then Google sign-in will work automatically.",
+      "errorSocialGeneric": "Google sign-in failed. Please try again."
     },
     "ForgotPassword": {
       "title": "Reset your password",
