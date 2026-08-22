@@ -1,4 +1,10 @@
 {
+  "Seo": {
+    "title": "Masar Portal",
+    "titleTemplate": "%s | Masar Portal",
+    "description": "Upload your visa documents, follow a personalised checklist, and get every file reviewed by Masar Center — for Study, Chancenkarte, Medical (D16), and Ausbildung applications to Germany.",
+    "keywords": "Masar Portal, visa document checklist, German visa documents, study visa Germany, Chancenkarte, D16 medical visa, Ausbildung visa, Masar Center, upload visa documents"
+  },
   "LocaleSwitcher": {
     "label": "Language",
     "en": "English",

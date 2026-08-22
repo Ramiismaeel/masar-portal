@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -7,6 +8,14 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ResendEmailButton } from "@/components/auth/resend-email-button";
 import { Button } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+
+// Everything under (app) is a signed-in user's own applications and
+// documents — no reason for it to be crawled or indexed, and every reason
+// not to (personal data, IDOR-adjacent risk of a cached title/URL leaking
+// that someone applied). Overrides the root layout's permissive default.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function DashboardLayout({
   children,

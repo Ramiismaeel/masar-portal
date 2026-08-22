@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -7,6 +8,13 @@ import { auth } from "@/lib/auth";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Button } from "@/components/ui/button";
 import enMessages from "../../../messages/en.json";
+
+// Staff-only, every page behind it lists real applicants' names, emails,
+// and document review status — never indexed, same reasoning as
+// (app)/layout.tsx one door over.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 /**
  * The admin security boundary — same principle as (app)/layout.tsx (a
