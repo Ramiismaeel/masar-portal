@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,6 +14,7 @@ import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 export function SignupForm() {
   const t = useTranslations("Auth.Signup");
+  const tCommon = useTranslations("Common");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -76,7 +78,7 @@ export function SignupForm() {
 
   if (submitted) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="flex items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-center">{t("checkInboxTitle")}</CardTitle>
@@ -99,7 +101,7 @@ export function SignupForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-center">{t("title")}</CardTitle>
@@ -144,28 +146,30 @@ export function SignupForm() {
 
             <div className="space-y-2">
               <Label htmlFor="password">{t("password")}</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={t("passwordHint")}
                 autoComplete="new-password"
                 required
                 disabled={isSubmitting}
+                showLabel={tCommon("showPassword")}
+                hideLabel={tCommon("hidePassword")}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
                 required
                 disabled={isSubmitting}
+                showLabel={tCommon("showPassword")}
+                hideLabel={tCommon("hidePassword")}
               />
             </div>
 

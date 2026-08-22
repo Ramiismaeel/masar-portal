@@ -3,25 +3,44 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { useTranslations } from "next-intl";
+import { Upload, Loader2 } from "lucide-react";
 
 import {
   uploadDocument,
   type UploadDocumentState,
 } from "@/lib/actions/documents";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const EMPTY_STATE: UploadDocumentState = { error: null };
 
-function FileInput({ label }: { label: string }) {
+/**
+ * A real, clearly-labelled button — not a bare native file input. The input
+ * itself is `sr-only` (in the layout/focus tree, just not painted) rather
+ * than `hidden` (display: none, which would drop it from keyboard/tab
+ * order): the label is what's visible and styled as a button, but Tab still
+ * reaches the actual input and Space/Enter still opens the file picker.
+ */
+function FileTrigger({
+  id,
+  label,
+  primary,
+}: {
+  id: string;
+  label: string;
+  primary: boolean;
+}) {
   const { pending } = useFormStatus();
   const t = useTranslations("Checklist");
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="shrink-0 text-xs font-medium text-muted-foreground">
-        {label}
-      </span>
-
+    <>
+      {/* Input comes first so the label below can react to its focus state
+          via the `peer` mechanism — a keyboard user tabbing to this (sr-only,
+          not display:none, so still focusable) input needs to SEE that focus
+          land somewhere, and the label is the only visible element here. */}
       <input
+        id={id}
         type="file"
         name="file"
         // Client-side accept is a UX convenience only — the Server Action
@@ -35,15 +54,33 @@ function FileInput({ label }: { label: string }) {
         // pausing on), so the extra step was only friction — worse on a
         // phone, and worse still for someone new to this kind of form.
         onChange={(event) => event.currentTarget.form?.requestSubmit()}
-        className="max-w-full flex-1 text-xs cursor-pointer hover:text-primary text-muted-foreground file:me-2 file:rounded-md file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:font-medium file:text-foreground disabled:opacity-50"
+        className="peer sr-only"
       />
 
-      {pending && (
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {t("uploading")}
-        </span>
-      )}
-    </div>
+      <label
+        htmlFor={id}
+        className={cn(
+          buttonVariants({
+            variant: primary ? "default" : "outline",
+            size: primary ? "default" : "sm",
+          }),
+          "w-full cursor-pointer peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
+          pending && "pointer-events-none opacity-50",
+        )}
+      >
+        {pending ? (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            {t("uploading")}
+          </>
+        ) : (
+          <>
+            <Upload className="size-4" aria-hidden="true" />
+            {label}
+          </>
+        )}
+      </label>
+    </>
   );
 }
 
@@ -65,7 +102,15 @@ export function UploadControl({
       <input type="hidden" name="applicationId" value={applicationId} />
       <input type="hidden" name="requirementCode" value={requirementCode} />
 
-      <FileInput label={isReplace ? t("replace") : t("upload")} />
+      <FileTrigger
+        id={`upload-${requirementCode}`}
+        label={isReplace ? t("replace") : t("upload")}
+        // The empty-slot case is the one thing on the row that needs a
+        // user's attention — a full-width primary button. Once something is
+        // already uploaded, replacing it is a lower-emphasis secondary
+        // action next to the filename, not the row's main call to action.
+        primary={!isReplace}
+      />
 
       {state.error && (
         <p role="alert" className="text-xs text-destructive">

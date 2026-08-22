@@ -74,11 +74,15 @@ Any page added under `(app)` is protected by construction.
       "SEO" below.
 - [x] **Phase 8** Legal & brand shell — Impressum, portal-specific Datenschutz (EN/AR), cookie
       consent banner, legal links wired into every layout. See "Legal & brand shell" below.
-- [x] **Phase 9** Auth providers — Google sign-in/signup. See "Google OAuth" below. Code and UI
-      are done; **Rami still needs to add real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`** to
-      local `.env` and Vercel (preview + prod) before it actually works anywhere.
+- [x] **Phase 9** Auth providers — Google sign-in/signup. See "Google OAuth" below. Verified live
+      end-to-end against real Google credentials, locally. **Still needed: the same
+      `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` added to Vercel (preview + prod)** — only local
+      `.env` has them so far.
 - [ ] **Phase 10** Visual identity — dark/light mode, imagery, animation, header/footer redesign
-      matching masar-center.de.
+      matching masar-center.de. **In progress**: brand colors + dark-mode toggle shipped for the
+      public pages (home, all `(auth)` pages). See "Visual identity" below. Still open: real
+      imagery (hero/category art is still placeholder), the wizard/dashboard/admin surfaces
+      (deliberately out of scope for this pass), and any animation.
 - [ ] **Phase 11** GDPR follow-through — self-service delete account, retention limits, audit log,
       bulk ZIP export. (Was "Phase 8" before the roadmap split — renumbered, not dropped.)
 - [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
@@ -153,9 +157,181 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   button correctly, RTL-mirrored; clicking it with no real Google credentials set hits
   `POST /api/auth/sign-in/social` → 500 (`BetterAuthError: CLIENT_ID_AND_SECRET_REQUIRED`, logged
   server-side) and the button surfaces the translated `errorSocialGeneric` message rather than a
-  raw English string or a silent failure. **Not yet verified**: an actual successful Google
-  handshake, or the `account_not_linked` redirect path — both need real credentials, which Rami
-  still has to create in Google Cloud Console and add to `.env`/Vercel (see Phase 9 above).
+  raw English string or a silent failure.
+- **Then verified live a second time with real credentials, once Rami added them to local
+  `.env`** — a full real handshake, not just the redirect construction: clicking the button sent
+  the browser to `accounts.google.com`'s actual account chooser (correct `client_id`,
+  `redirect_uri=http://localhost:3000/api/auth/callback/google`, `scope=email+profile+openid`,
+  PKCE `code_challenge` all present and correct), picking an already-signed-in Google account with
+  **no password entry** (an already-authenticated account, not a login prompt) completed the
+  round trip, and landed back on `/dashboard` fully signed in. Checked the database directly
+  (`prisma.user.findUnique`) to confirm what actually happened rather than trusting the redirect
+  alone: the email belonged to an **existing** user with a `credential` account from a prior
+  session (`emailVerified: true`) — Google auto-linked by creating a *second* `Account` row
+  (`providerId: "google"`) on the **same** `User`, not a duplicate account. Exactly the
+  auto-linking behaviour predicted above from reading `link-account.mjs` directly. The
+  `account_not_linked` path (an *unverified* local account trying Google) is still unexercised —
+  would need a fresh unverified test signup to trigger on purpose.
+
+## Visual identity (Phase 10, Aug 2026 — in progress)
+- **Real brand discovered by reading the live site, not assumed** — `CLAUDE.md` and this file both
+  said "Masar brand green #0d4d35," but browsing masar-center.de directly (dark navy background,
+  blue "MASAR" wordmark, orange/amber accents — no green anywhere, light or dark mode) showed that
+  was never actually the real brand, just what got coded early on. Confirmed with Rami, who gave
+  exact values: primary blue `#0054d7`, accent orange `#fb3b17`.
+- **Mockup first, on a design canvas, before touching component code** — Rami's choice, given how
+  broad "I find the UI/UX boring, I want to change many things" was. Two artboards (home page,
+  login) with `darkMode`/color tweaks, built from the real tokens in `globals.css` and `ui/*`
+  (radii, spacing, button/card shapes) rather than invented from scratch, so approving the mockup
+  meant approving layout AND brand, not just a color swap. Once approved, carried into real code —
+  the canvas was a decision tool, not a spec left to rot.
+  - One real asset swap happened on the canvas itself, via an artifact comment: Rami pointed at the
+    hand-drawn placeholder logo mark and asked for the real one from
+    `masar-center.de/favicon-512x512.png`. Downloaded, downsized ~102 KB → ~16 KB (`System.Drawing`
+    via PowerShell — no image tool was installed), re-seeded, republished, replied and resolved the
+    thread.
+- **`--primary` in `globals.css` actually changed this time** (oklch equivalents of the exact hex
+  Rami gave, computed with the real sRGB→OKLab→OKLCH math, not eyeballed) — light `oklch(0.4939
+  0.2126 260.9)`, a brightened `oklch(0.62 0.17 261)` for dark mode (same hue, more lightness/less
+  chroma so it still pops on the new navy background; masar-center.de's own dark hero didn't show a
+  clear reference point for this, so this is a judgment call, not read off the source).
+- **A new `--brand-accent`/`--brand-accent-foreground` token pair, deliberately separate from
+  shadcn's own `--accent`/`--accent-foreground`.** The temptation was to repaint `--accent` orange
+  directly — wrong, because shadcn components already use `--accent` for neutral hover/active
+  surfaces throughout the UI (ghost button hover, dropdown hover, …); doing that would have made
+  every hover state orange instead of the sparing highlight masar-center.de actually uses it for
+  (a stat number, a status dot). Used today on the home page's step-number circles and the hero
+  illustration's checklist accents; available anywhere else as `bg-brand-accent` /
+  `text-brand-accent`.
+- **A dark-mode toggle now actually exists** — previously `.dark` was a fully dead class in
+  `globals.css`: real tokens, zero code path that ever applied it (no `next-themes`, no
+  `prefers-color-scheme` wiring, nothing). `src/lib/theme.ts` / `src/lib/actions/theme.ts` /
+  `theme-toggle.tsx` are a deliberate copy of the exact `locale.ts`/`actions/locale.ts`/
+  `LocaleSwitcher` shape (cookie + Server Action + `router.refresh()`, not `revalidatePath` — see
+  `setLocale`'s comment for why that specific mechanism was chosen, unrelated to theme but the same
+  reasoning applies) — same pattern, so the two toggles behave identically and a future maintainer
+  only has to learn it once. Cookie-only, no `User.theme` column: unlike locale, nothing
+  server-side (emails, Server Action copy) needs to know the visitor's theme, so there was no
+  reason to add a migration for it.
+  - The `<html>` class is set once, in the root layout, from the cookie — server-rendered, no
+    flash-of-wrong-theme, same mechanism already trusted for `dir`/`lang`. That also means the
+    preference is genuinely global: toggling it on the home page and then navigating into
+    `(app)`/`admin` keeps it dark there too, even though those layouts don't have their own visible
+    toggle button yet (out of scope this pass, see below) — it's one root-level class, not a
+    per-layout setting.
+  - Verified live: clicking the toggle on `/` flips the whole page — navy background, brightened
+    blue buttons, category-card icon tints, the orange step numbers — and flips back; same toggle
+    now sits in the shared `(auth)/layout.tsx` header (next to `LocaleSwitcher`), so it covers
+    login/signup/forgot-password/reset-password/verify-email in one place rather than duplicated
+    per page.
+- **Scope, decided explicitly**: home page + every `(auth)` page this pass (they already share one
+  layout, so most of the work was one edit, not five). `(app)` (wizard, dashboard, checklist) and
+  `admin` are untouched on purpose — same "different, out-of-scope lane" reasoning already applied
+  to i18n and the legal-footer rollout — but they inherit the new color tokens for free (buttons,
+  cards, focus rings) since those aren't gated by route the way the header/toggle are, so they
+  already look less green even without a dedicated pass. **Revisited a day later**: Rami asked to
+  bring the checklist/upload UI specifically into this pass too — see "Checklist & upload UX"
+  below. The rest of `(app)` (dashboard cards, wizard steps) and `admin` are still untouched.
+- **No real photography exists for this product** — the old `public/` image assets
+  (`globe.svg`/`next.svg`/etc., the create-next-app defaults) were already removed before this
+  session; there was never a portal-specific photo to begin with. The hero graphic and category
+  icons are hand-drawn placeholders (inline SVG, geometric shapes), flagged as such at every
+  handover rather than passed off as finished. Real imagery is the natural next step once this
+  direction is confirmed live for a while, not done here.
+- Verified live (Arabic, dev server), both light and dark: home page (header logo, hero + hero
+  illustration, category cards, step numbers, footer) and `/login` (logo lockup, form, Google
+  button, divider) all render correctly with the new tokens; `npm run typecheck` and `npm run
+  lint` both clean throughout.
+
+### Header layout + password visibility (follow-up, same day)
+Two more rounds of real feedback after the initial pass shipped — one via an artifact comment on
+the design canvas (about the *real app*, not the mockup itself), one directly in chat.
+- **Password show/hide toggle.** `src/components/ui/password-input.tsx` — `Input` plus an eye-icon
+  button, `type` state toggled locally, `tabIndex={-1}` so it never enters the tab order or submits
+  the form (same reasoning as a browser's own native reveal-password control). Locale-agnostic like
+  the other `ui/` primitives: takes `showLabel`/`hideLabel` as props rather than calling
+  `useTranslations` itself — callers pass the new `Common.showPassword`/`hidePassword` keys. Now
+  used on every password field in the app: login, signup (×2), reset password (×2).
+- **Header centering went through three shapes across three rounds of real feedback, each one a
+  genuine correction, not a false start:**
+  1. First fix (for the actual bug Rami reported: the flex `justify-between` original always
+     pinned the logo to the start in LTR, never truly centered): a 3-column `[1fr_auto_1fr]` grid,
+     applied identically on every breakpoint — two equal side tracks force the middle column
+     (logo) into the true visual center regardless of how wide the buttons on either side are.
+  2. Rami's next round: centering was only ever wanted on **mobile** — desktop should look exactly
+     like it did before any of this (logo at the start, buttons at the end) — and separately, the
+     buttons sharing a row with the now-centered mobile logo "looked bad" and needed their own
+     spot. Fixed by splitting into two responsive blocks per header: below `sm`, a stacked layout
+     (a compact buttons row, then a centered logo row below it); at `sm` and above, back to the
+     original single flex row. Applied to both `home-content.tsx`'s header and
+     `(auth)/layout.tsx`.
+  3. Rami's final round, scoped to `(auth)/layout.tsx` only: wanted the login/signup logo centered
+     at **every** width, not just mobile, with the language/theme buttons pulled into their own
+     "mini header." Shape 2's responsive split couldn't do that (desktop was deliberately
+     non-centered by then), so it was replaced with something structurally simpler: a slim,
+     always-present utility bar (its own `border-b` row, buttons end-aligned) sitting above a
+     separate centered column holding the logo, the card, and the footer. No responsive split at
+     all — the logo is centered at every width because it no longer shares a row with anything
+     that could push it off-center. `home-content.tsx`'s header was **not** touched in this final
+     round — only the auth layout was named in the request — so it still uses shape 2 (centered +
+     stacked on mobile, original row on desktop). Worth asking Rami whether the home page should
+     get the same mini-header treatment for consistency, or whether its wider nav (up to 4 items
+     vs. 2) is different enough to warrant staying as-is.
+  - Verified live each round, not just typechecked — including one live DOM-hack check (toggling
+    the `sm:hidden`/`sm:flex` classes off via the browser console and forcing a narrow `max-width`
+    on the block) after the browser automation's own `resize_window` tool turned out not to
+    actually shrink this session's viewport below ~1000px, so an ordinary screenshot at a narrow
+    width wasn't available — noted here in case that tool limitation matters again.
+
+### Checklist & upload UX (follow-up, next day)
+Rami's own words: the upload card "look bad with checkbox that not needed and no good ui/ux where
+should user click and after upload there is no big ui change after upload." Three concrete, real
+problems, not a vague "make it nicer" — each traced to a specific piece of `applications/[id]/
+page.tsx` and `upload-control.tsx`, not guessed at.
+- **The "checkbox"**: the not-yet-uploaded state used a lucide `Square` icon — a hollow outlined
+  square — with a code comment already reasoning through this exact risk ("a hollow circle reads
+  as an unchecked radio button... a square doesn't carry that expectation") and picking `Square`
+  to avoid it. Wrong call, confirmed by a real user reading it as a checkbox anyway — outlined
+  squares and circles are *both* the two most common checkbox/radio shapes in UI, there wasn't a
+  safe hollow-outline option. Replaced with a filled circular badge (muted gray + a `FileText`
+  icon when empty, `bg-emerald-500/15` + a `Check` icon when uploaded) — filled circles read as a
+  status indicator, not a form control, and it reuses the same `emerald` success color
+  `document-review-status.ts` already uses for "Approved."
+- **"Where should user click"**: the old control was a native `<input type="file">` restyled with
+  Tailwind's `file:` pseudo-class variants — small (`text-xs`), inline with a label, and shaped
+  like the browser's own inconsistent-across-browsers file-picker chrome rather than a real button.
+  Replaced with a full-width `Button`-styled `<label>` (`Upload`/cloud icon, big and obviously
+  clickable) wired to an `sr-only` (not `hidden` — `display:none` would drop it from the tab
+  order) file input via `htmlFor`/`peer`, so a keyboard user tabbing to the real input still sees a
+  focus ring on the visible label (`peer-focus-visible:ring-*`, matching `Button`'s own
+  `focus-visible` styling exactly). The empty-slot button is full emphasis (`variant="default"`);
+  once something's uploaded, "Replace" drops to `variant="outline"` — replacing isn't the row's
+  main call to action once it's done.
+- **"No big UI change after upload"**: technically the page *was* already updating correctly —
+  `uploadDocument`'s `revalidatePath` plus the Server Action's implicit route refresh means fresh
+  data really does render — but the old version's only visible delta was a small icon swap
+  (`Square` → `CheckCircle2`) and a line of filename text appearing inline. Perceptually nothing
+  "happened." Fixed on three levels: the whole `<li>` gets a `transition-colors` background/border
+  wash to a light emerald tint on upload (animates smoothly since the `<li>` itself never
+  remounts — same `key={requirement.code}` throughout, just new props); the status badge is keyed
+  on upload state (`key={uploaded ? "done" : "empty"}`) so it remounts and replays a `tw-animate-
+  css` `zoom-in-50` entrance on every real transition, not just on first paint; the filename now
+  renders as its own bordered chip (icon + name + inline `Delete`) with a `fade-in` entrance,
+  instead of small inline text easy to miss.
+- **`tw-animate-css` actually wired in for the first time** — it's been an unused dependency since
+  whichever `shadcn` scaffolding step installed it (`grep` across `src/` found zero uses before
+  this). `@import "tw-animate-css";` added to `globals.css` right after the Tailwind import; this
+  is what makes `animate-in`/`zoom-in-50`/`fade-in`/`duration-*` resolve as real utility classes.
+- Verified live end-to-end against the real dev database and a real (if trivial) test upload, not
+  just typechecked: created a fresh Ausbildung draft, uploaded a small real JPG through the actual
+  file input (`file_upload` on the underlying `sr-only` element, not the visible label — clicking a
+  file input opens a native OS picker no automation tool can see into), and watched the full
+  round-trip — Cloudmersive scan → R2 → DB upsert → `revalidatePath` → the new green success state,
+  filename chip, and "1 of 5 required documents uploaded" progress bar all landing correctly.
+  Confirmed the already-submitted Medical (D16) application's *locked* checklist (13/13 uploaded,
+  no upload controls rendered — `canUpload` correctly false) also renders the new "done" styling
+  correctly. Checked Arabic/RTL rendering too — icons and buttons mirror correctly, nothing
+  clipped. Test application deleted afterward, no leftover data.
 
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
@@ -787,9 +963,9 @@ requirements table.)
 `DATABASE_URL` (pooled), `DIRECT_URL` (unpooled), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
 `RESEND_API_KEY`, `EMAIL_FROM`. Logo URL is hard-coded in code (public, not secret).
 
-Google OAuth (Phase 9): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — **not yet set anywhere**, one
-shared client across local/preview/prod (see "Google OAuth" above). Until these are real, the
-Google button 500s with `CLIENT_ID_AND_SECRET_REQUIRED`.
+Google OAuth (Phase 9): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — set in local `.env` and
+verified live (see "Google OAuth" above). **Still missing from Vercel** (preview + prod) — same
+shared-client values, not yet added there.
 
 R2 / Cloudmersive (Phase 5): `S3_ENDPOINT` (full bucket URL — see the endpoint gotcha under
 "Uploads"), `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,

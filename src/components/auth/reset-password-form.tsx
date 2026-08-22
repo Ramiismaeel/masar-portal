@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const t = useTranslations("Auth.ResetPassword");
+  const tCommon = useTranslations("Common");
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -64,28 +65,30 @@ export function ResetPasswordForm({ token }: { token: string }) {
 
       <div className="space-y-2">
         <Label htmlFor="password">{t("newPassword")}</Label>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={t("passwordHint")}
           autoComplete="new-password"
           required
           disabled={isSubmitting}
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
-        <Input
+        <PasswordInput
           id="confirmPassword"
-          type="password"
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           autoComplete="new-password"
           required
           disabled={isSubmitting}
+          showLabel={tCommon("showPassword")}
+          hideLabel={tCommon("hidePassword")}
         />
       </div>
 

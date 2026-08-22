@@ -9,6 +9,7 @@ import type { Locale } from "@/i18n/locale";
 import { RegisterServiceWorker } from "@/components/register-service-worker";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { COOKIE_CONSENT_COOKIE, isCookieConsent } from "@/lib/cookie-consent";
+import { getTheme } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -112,11 +113,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  // Light/dark values match masar-center.de's own theme-color pair exactly
-  // (read from its live <head>), not invented — same brand, same choice.
+  // Matches the brand blue / navy pair now used in globals.css — see
+  // docs/roadmap.md "Visual identity".
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#1a6b4a" },
-    { media: "(prefers-color-scheme: dark)", color: "#0d4d35" },
+    { media: "(prefers-color-scheme: light)", color: "#0054d7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0f1f" },
   ],
   colorScheme: "light dark",
 };
@@ -129,6 +130,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // this is the one place a physical LTR/RTL decision actually gets made.
   const locale = await getLocale();
   const messages = await getMessages();
+  const theme = await getTheme();
 
   const cookieStore = await cookies();
   const rawConsent = cookieStore.get(COOKIE_CONSENT_COOKIE)?.value;
@@ -138,7 +140,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang={locale}
       dir={locale === "ar" ? "rtl" : "ltr"}
-      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${plexArabic.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${plexArabic.variable} h-full antialiased${theme === "dark" ? " dark" : ""}`}
     >
       <body className="min-h-full flex flex-col">
         <RegisterServiceWorker />

@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { HomeContent } from "@/components/home-content";
+import { getTheme } from "@/lib/theme";
 import arMessages from "../../../messages/ar.json";
 
 /**
@@ -85,11 +86,17 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ArabicHomePage() {
   const session = await auth.api.getSession({ headers: await headers() });
   const isSignedIn = Boolean(session?.user);
+  const theme = await getTheme();
 
   return (
     <NextIntlClientProvider locale="ar" messages={arMessages}>
       <div lang="ar" dir="rtl">
-        <HomeContent isSignedIn={isSignedIn} locale="ar" switchLocaleNavigateTo="/" />
+        <HomeContent
+          isSignedIn={isSignedIn}
+          locale="ar"
+          theme={theme}
+          switchLocaleNavigateTo="/"
+        />
       </div>
     </NextIntlClientProvider>
   );
