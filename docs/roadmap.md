@@ -74,8 +74,9 @@ Any page added under `(app)` is protected by construction.
       "SEO" below.
 - [x] **Phase 8** Legal & brand shell — Impressum, portal-specific Datenschutz (EN/AR), cookie
       consent banner, legal links wired into every layout. See "Legal & brand shell" below.
-- [ ] **Phase 9** Auth providers — Google sign-in/signup (deferred until Phase 8 shipped a real
-      privacy policy URL for its consent screen).
+- [x] **Phase 9** Auth providers — Google sign-in/signup. See "Google OAuth" below. Code and UI
+      are done; **Rami still needs to add real `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`** to
+      local `.env` and Vercel (preview + prod) before it actually works anywhere.
 - [ ] **Phase 10** Visual identity — dark/light mode, imagery, animation, header/footer redesign
       matching masar-center.de.
 - [ ] **Phase 11** GDPR follow-through — self-service delete account, retention limits, audit log,
@@ -104,6 +105,57 @@ Any page added under `(app)` is protected by construction.
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
+
+## Google OAuth (Phase 9, Aug 2026)
+- **One shared Google OAuth client across all three environments** (Rami's choice over one client
+  per environment) — a single `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` pair, same value in local
+  `.env`, Vercel preview, and Vercel prod, with all three redirect URIs
+  (`.../api/auth/callback/google` for localhost, the preview domain, and `portal.masar-center.de`)
+  registered on the one Google Cloud OAuth client. Deliberately *not* mirroring how
+  `BETTER_AUTH_SECRET` is isolated per environment — simpler to run solo, revisit if that ever
+  stops being true.
+- **Account-linking behaviour verified by reading `node_modules/better-auth/dist/oauth2/
+  link-account.mjs` directly, not assumed from docs** — same "trust the source" standard already
+  applied to email verification and the signup-enumeration fix. No `account.accountLinking`
+  config was added; Better Auth's *default* behaviour already does the safe thing here:
+  - A Google sign-in whose email matches an existing local user **auto-links** (creates an
+    `Account` row on the existing `User`) only when that user's own `emailVerified` is already
+    `true` (`requireLocalEmailVerified` defaults to `true`). Google itself always reports its own
+    email as verified, so the provider side is never what blocks a link.
+  - If the local account is **not** verified yet, linking is refused — the callback redirects to
+    `errorCallbackURL` with `?error=account_not_linked`, which `LoginForm` maps to a specific
+    translated message telling them to log in with their password and verify email first (Google
+    sign-in then works automatically afterward, no separate "link your accounts" flow needed).
+  - This is not an enumeration vector the same way the email/password forms were: triggering it at
+    all requires already controlling a real Google account with that exact email, a materially
+    higher bar than typing an address into a form.
+- **New user via Google needs no verification email and no "check your inbox" step** — unlike
+  email/password signup (`autoSignIn: false`, deliberately no session — see "Signup enumeration"
+  below), a brand-new Google sign-up gets `emailVerified: true` and a session immediately, since
+  Google already vouches for the address. `role`/`locale` still come from `User`'s Prisma
+  defaults / Better Auth `additionalFields` exactly as for email signup — nothing provider-specific
+  needed there, confirmed by reading `handleOAuthUserInfo`'s `createUser` call.
+- **UI**: `GoogleSignInButton` (`src/components/auth/google-sign-in-button.tsx`) is one shared
+  component used by both `LoginForm` and `SignupForm`, calling
+  `authClient.signIn.social({ provider: "google", callbackURL: "/dashboard", errorCallbackURL:
+  "/login" })`. Better Auth's client does the actual `window.location` redirect to Google itself
+  on success — the component only needs to handle a failure *before* that redirect (e.g. a
+  provider-not-configured 500, which is exactly what happens right now with no real
+  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` set — confirmed live, see below). A failure *after*
+  Google redirects back arrives as `?error=...` on `/login` instead, read server-side in
+  `(auth)/login/page.tsx` and passed into `LoginForm` — same "read searchParams in the Server
+  Component, not `useSearchParams()`" convention `/verify-email` already established.
+- Error codes off the OAuth callback are **lowercase snake_case** (`account_not_linked`,
+  `unable_to_link_account`, …) — read from `OAUTH_CALLBACK_ERROR_CODES` in
+  `node_modules/better-auth/dist/oauth2/errors.mjs`. Unlike the email-verification flow's
+  uppercase codes, this one really is lowercase in both docs and code — no docs/code mismatch here.
+- Verified live (Arabic, dev server): both `/login` and `/signup` render the divider + Google
+  button correctly, RTL-mirrored; clicking it with no real Google credentials set hits
+  `POST /api/auth/sign-in/social` → 500 (`BetterAuthError: CLIENT_ID_AND_SECRET_REQUIRED`, logged
+  server-side) and the button surfaces the translated `errorSocialGeneric` message rather than a
+  raw English string or a silent failure. **Not yet verified**: an actual successful Google
+  handshake, or the `account_not_linked` redirect path — both need real credentials, which Rami
+  still has to create in Google Cloud Console and add to `.env`/Vercel (see Phase 9 above).
 
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
@@ -722,6 +774,8 @@ through `/login` → existing Resend button.
   `sendVerificationEmail` is unauthenticated and sends real mail, this is an open Resend-quota
   abuse vector. TODO before launch: give `rateLimit` a shared store (Upstash/Redis via
   `secondaryStorage`) or a DB-backed store.
+- Social sign-in (`signIn.social`, OAuth callback error codes, default account-linking rules) —
+  see "Google OAuth" above.
 
 ## Open questions for Masar
 Only one left: confirm applicants do **not** upload motivation letter, Europass CV, visa
@@ -732,6 +786,10 @@ requirements table.)
 ## Env vars
 `DATABASE_URL` (pooled), `DIRECT_URL` (unpooled), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
 `RESEND_API_KEY`, `EMAIL_FROM`. Logo URL is hard-coded in code (public, not secret).
+
+Google OAuth (Phase 9): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — **not yet set anywhere**, one
+shared client across local/preview/prod (see "Google OAuth" above). Until these are real, the
+Google button 500s with `CLIENT_ID_AND_SECRET_REQUIRED`.
 
 R2 / Cloudmersive (Phase 5): `S3_ENDPOINT` (full bucket URL — see the endpoint gotcha under
 "Uploads"), `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`,

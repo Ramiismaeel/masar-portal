@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 export function SignupForm() {
   const t = useTranslations("Auth.Signup");
@@ -172,6 +173,18 @@ export function SignupForm() {
               {isSubmitting ? t("submitting") : t("submit")}
             </Button>
           </form>
+
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">{t("orContinueWith")}</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <GoogleSignInButton
+            label={t("continueWithGoogle")}
+            callbackURL="/dashboard"
+            onError={() => setError(t("errorSocialGeneric"))}
+          />
 
           <p className="mt-4 text-center text-sm text-muted-foreground">
             {t("haveAccount")}{" "}

@@ -142,6 +142,9 @@
       "errorPasswordMatch": "Passwords do not match",
       "errorGeneric": "Something went wrong. Please try again.",
       "errorSignupFallback": "Could not create your account. Please try again.",
+      "orContinueWith": "Or continue with",
+      "continueWithGoogle": "Continue with Google",
+      "errorSocialGeneric": "Google sign-in failed. Please try again.",
       "checkInboxTitle": "Check your inbox",
       "checkInboxBody": "If {email} isn't already registered, we've sent a verification link to it. Click the link to verify your address, then sign in.",
       "goToLogin": "Go to login"
@@ -158,7 +161,11 @@
       "errorRequired": "All fields are required",
       "errorEmail": "Please enter a valid email address",
       "errorInvalid": "Invalid email or password",
-      "errorGeneric": "Something went wrong. Please try again."
+      "errorGeneric": "Something went wrong. Please try again.",
+      "orContinueWith": "Or continue with",
+      "continueWithGoogle": "Continue with Google",
+      "errorAccountNotLinked": "An account with this email already exists but hasn't been verified yet. Log in with your password and verify your email first — then Google sign-in will work automatically.",
+      "errorSocialGeneric": "Google sign-in failed. Please try again."
     },
     "ForgotPassword": {
       "title": "Reset your password",
