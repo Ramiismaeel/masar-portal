@@ -10,8 +10,13 @@
     "en": "الإنجليزية",
     "ar": "العربية"
   },
+  "ThemeToggle": {
+    "label": "تبديل الوضع الليلي"
+  },
   "Common": {
-    "backToDashboard": "العودة إلى لوحة التحكم"
+    "backToDashboard": "العودة إلى لوحة التحكم",
+    "showPassword": "إظهار كلمة المرور",
+    "hidePassword": "إخفاء كلمة المرور"
   },
   "Footer": {
     "impressum": "بيانات الناشر",

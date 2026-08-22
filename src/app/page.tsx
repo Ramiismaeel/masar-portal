@@ -5,6 +5,7 @@ import { getLocale } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { HomeContent } from "@/components/home-content";
 import type { Locale } from "@/i18n/locale";
+import { getTheme } from "@/lib/theme";
 
 /**
  * hreflang lives HERE, not in the root layout — every other route inherits
@@ -31,6 +32,7 @@ export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() });
   const isSignedIn = Boolean(session?.user);
   const locale = (await getLocale()) as Locale;
+  const theme = await getTheme();
 
-  return <HomeContent isSignedIn={isSignedIn} locale={locale} />;
+  return <HomeContent isSignedIn={isSignedIn} locale={locale} theme={theme} />;
 }

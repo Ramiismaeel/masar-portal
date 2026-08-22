@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -6,67 +7,79 @@
   --radius: 0.625rem;
 
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.2077 0.0398 265.8);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.2077 0.0398 265.8);
 
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.2077 0.0398 265.8);
 
-  /* Masar brand green #0d4d35 */
-  --primary: oklch(0.3746 0.0748 162.7);
+  /* Masar brand blue #0054d7 — matches masar-center.de, not the shade
+     previously coded here. See docs/roadmap.md "Visual identity". */
+  --primary: oklch(0.4939 0.2126 260.9);
   --primary-foreground: oklch(0.99 0 0);
 
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.9728 0.0057 264.5);
+  --secondary-foreground: oklch(0.2077 0.0398 265.8);
 
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted: oklch(0.9728 0.0057 264.5);
+  --muted-foreground: oklch(0.503 0.0338 266.1);
 
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent: oklch(0.9728 0.0057 264.5);
+  --accent-foreground: oklch(0.2077 0.0398 265.8);
+
+  /* Brand orange #fb3b17 — a sparing highlight (status/stat accents),
+     never a structural hover color. Kept separate from --accent above,
+     which shadcn components use for neutral hover/active surfaces. */
+  --brand-accent: oklch(0.6457 0.2312 32.3);
+  --brand-accent-foreground: oklch(0.99 0 0);
 
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
 
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: oklch(0.9 0.006 264.5);
+  --input: oklch(0.9 0.006 264.5);
 
-  /* focus ring uses the brand green */
-  --ring: oklch(0.3746 0.0748 162.7);
+  --ring: oklch(0.4939 0.2126 260.9);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
+  --background: oklch(0.1729 0.0343 269.5);
+  --foreground: oklch(0.9579 0.0099 267.4);
 
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
+  --card: oklch(0.2256 0.0541 268);
+  --card-foreground: oklch(0.9579 0.0099 267.4);
 
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.2256 0.0541 268);
+  --popover-foreground: oklch(0.9579 0.0099 267.4);
 
-  /* lighter green so it reads on a dark surface */
-  --primary: oklch(0.6592 0.1168 162.9);
-  --primary-foreground: oklch(0.18 0.02 162.9);
+  /* Brightened so it still pops against the dark navy background —
+     same hue as the light-mode blue, not a different color. */
+  --primary: oklch(0.62 0.17 261);
+  --primary-foreground: oklch(0.15 0.03 261);
 
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.2122 0.0508 268.5);
+  --secondary-foreground: oklch(0.9579 0.0099 267.4);
 
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
+  --muted: oklch(0.2122 0.0508 268.5);
+  --muted-foreground: oklch(0.7109 0.0502 269.4);
 
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent: oklch(0.2122 0.0508 268.5);
+  --accent-foreground: oklch(0.9579 0.0099 267.4);
+
+  /* Same brand orange as light mode — already legible on dark navy,
+     no separate dark variant needed (matches masar-center.de). */
+  --brand-accent: oklch(0.6457 0.2312 32.3);
+  --brand-accent-foreground: oklch(0.99 0 0);
 
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 16%);
 
-  --ring: oklch(0.6592 0.1168 162.9);
+  --ring: oklch(0.62 0.17 261);
 }
 
 @theme inline {
@@ -90,6 +103,9 @@
 
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-foreground: var(--brand-accent-foreground);
 
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);

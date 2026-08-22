@@ -10,8 +10,13 @@
     "en": "English",
     "ar": "Arabic"
   },
+  "ThemeToggle": {
+    "label": "Toggle dark mode"
+  },
   "Common": {
-    "backToDashboard": "Back to dashboard"
+    "backToDashboard": "Back to dashboard",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "Footer": {
     "impressum": "Impressum",

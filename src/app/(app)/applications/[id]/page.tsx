@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Square } from "lucide-react";
+import { ArrowLeft, Check, FileText } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
@@ -18,6 +18,7 @@ import { APPLICATION_STATUS_META } from "@/lib/application-status";
 import { DOCUMENT_REVIEW_STATUS_META } from "@/lib/document-review-status";
 import { pick } from "@/i18n/pick";
 import type { Locale } from "@/i18n/locale";
+import { cn } from "@/lib/utils";
 import { UploadControl } from "@/components/checklist/upload-control";
 import { SubmitApplicationButton } from "@/components/checklist/submit-application-button";
 import { DeleteDocumentControl } from "@/components/checklist/delete-document-control";
@@ -218,41 +219,40 @@ async function RequirementRow({
   const t = await getTranslations("Checklist");
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border p-3">
+    <li
+      className={cn(
+        "flex flex-col gap-3 rounded-lg border p-3 transition-colors duration-300",
+        uploaded
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : "border-border",
+      )}
+    >
       <div className="flex items-center gap-3">
-        {uploaded ? (
-          <CheckCircle2
-            className="size-5 shrink-0 text-primary"
-            aria-hidden="true"
-          />
-        ) : (
-          // A hollow circle reads as an unchecked radio button — an
-          // interactive affordance that does nothing until uploads exist.
-          // A square doesn't carry that expectation.
-          <Square
-            className="size-5 shrink-0 text-muted-foreground"
-            aria-hidden="true"
-          />
-        )}
-
-        <div className="flex-1">
-          <span className="block text-sm text-card-foreground">
-            {pick(locale, requirement.labelEn, requirement.labelAr)}
-          </span>
-          {document && (
-            <div className="flex items-center gap-2">
-              <span className="truncate text-xs text-muted-foreground">
-                {document.fileName}
-              </span>
-              {canUpload && (
-                <DeleteDocumentControl
-                  applicationId={applicationId}
-                  requirementCode={requirement.code}
-                />
-              )}
-            </div>
+        {/* Keyed on the upload state so a fresh upload/removal remounts this
+            badge and replays the entrance animation — the one clear "this
+            just changed" signal on the page, not just a static icon swap.
+            A filled circle rather than a hollow square/circle on purpose:
+            those read as an unchecked checkbox/radio (a real complaint —
+            this is a status indicator, nothing here is clickable). */}
+        <span
+          key={uploaded ? "done" : "empty"}
+          className={cn(
+            "flex size-9 shrink-0 animate-in items-center justify-center rounded-full zoom-in-50 duration-300",
+            uploaded
+              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              : "bg-muted text-muted-foreground",
           )}
-        </div>
+        >
+          {uploaded ? (
+            <Check className="size-4" aria-hidden="true" />
+          ) : (
+            <FileText className="size-4" aria-hidden="true" />
+          )}
+        </span>
+
+        <span className="min-w-0 flex-1 text-sm font-medium text-card-foreground">
+          {pick(locale, requirement.labelEn, requirement.labelAr)}
+        </span>
 
         {!requirement.required && (
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -282,6 +282,24 @@ async function RequirementRow({
           </span>
           {document.adminNote}
         </p>
+      )}
+
+      {document && (
+        <div className="flex animate-in items-center gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 fade-in duration-300">
+          <FileText
+            className="size-3.5 shrink-0 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+            {document.fileName}
+          </span>
+          {canUpload && (
+            <DeleteDocumentControl
+              applicationId={applicationId}
+              requirementCode={requirement.code}
+            />
+          )}
+        </div>
       )}
 
       {canUpload && (

@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,6 +34,7 @@ export function LoginForm({
   initialSocialError?: string;
 }) {
   const t = useTranslations("Auth.Login");
+  const tCommon = useTranslations("Common");
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -81,7 +83,7 @@ export function LoginForm({
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-center">{t("title")}</CardTitle>
@@ -119,15 +121,16 @@ export function LoginForm({
                   {t("forgotPassword")}
                 </Link>
               </div>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 autoComplete="current-password"
                 required
                 disabled={isSubmitting}
+                showLabel={tCommon("showPassword")}
+                hideLabel={tCommon("hidePassword")}
               />
             </div>
 
