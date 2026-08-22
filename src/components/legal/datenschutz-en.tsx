@@ -9,11 +9,13 @@ import Link from "next/link";
  * analytics — see the Cookies section below and docs/roadmap.md "Phase 8"
  * for what was actually found in this codebase, not assumed.
  *
- * Two real gaps flagged in docs/roadmap.md, not silently glossed over here:
- * - Section 4's "by uploading, you consent" is the current mechanism, not a
- *   proper opt-in checkbox — a real one is the safer follow-up.
+ * One real gap still flagged in docs/roadmap.md, not silently glossed over here:
  * - Section 6 names Cloudmersive and Resend without a confirmed processing
  *   region — flagged for Rami to confirm/get a DPA, not guessed at.
+ *
+ * Section 4 was updated once a real opt-in checkbox shipped (Application.
+ * sensitiveDataConsentAt, set from the Medical wizard's question step) —
+ * see needsSensitiveDataConsent() in src/lib/wizard.ts.
  */
 export function DatenschutzEn() {
   return (
@@ -78,19 +80,20 @@ export function DatenschutzEn() {
         </ul>
       </section>
 
-      <section>
+      <section id="sensitive-documents">
         <h2>4. Sensitive documents</h2>
         <p>
-          A criminal record extract, and — for Medical (D16) applications — a
-          medical report, are documents of a more sensitive nature under
-          Art. 9/10 GDPR. We collect them only because they are documents the
-          relevant authorities require for your specific application, only
-          from applicants who choose that category, and only for as long as
-          needed to support your application. Uploading these documents is
-          your explicit consent to our processing them for this purpose; you
-          can withdraw that consent at any time by contacting us (Section 9),
-          though we may then be unable to continue processing your
-          application.
+          A criminal record extract and a medical report — required only for
+          Medical (D16) applications — are documents of a more sensitive
+          nature under Art. 9/10 GDPR. We collect them only because they are
+          documents the relevant authorities require for your specific
+          application, only from applicants who choose that category, and
+          only for as long as needed to support your application. Before
+          these documents become part of your checklist, the application
+          wizard asks you to explicitly opt in via a checkbox, separate from
+          the rest of your application; you can withdraw that consent at any
+          time by contacting us (Section 9), though we may then be unable to
+          continue processing your application.
         </p>
       </section>
 

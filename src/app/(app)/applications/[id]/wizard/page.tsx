@@ -13,6 +13,7 @@ import {
   STEP_IDENTITY,
   STEP_QUESTION,
   hasQuestionStep,
+  needsSensitiveDataConsent,
   parseAnswers,
   totalSteps,
 } from "@/lib/wizard";
@@ -55,6 +56,7 @@ export default async function WizardPage({
       fullNameLatin: true,
       passportNumber: true,
       passportExpiry: true,
+      sensitiveDataConsentAt: true,
       user: { select: { phone: true } },
     },
   });
@@ -150,6 +152,8 @@ export default async function WizardPage({
                 options={MEDICAL_PROFESSIONS}
                 defaultValue={answers.medicalProfession}
                 locale={locale}
+                showSensitiveConsent={needsSensitiveDataConsent(category.value)}
+                sensitiveConsentGiven={application.sensitiveDataConsentAt !== null}
               />
             )}
           </div>

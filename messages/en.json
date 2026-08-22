@@ -74,6 +74,8 @@
     "studentHint": "If it is taught in English, you will also need an English language certificate.",
     "medicalLegend": "What is your profession?",
     "medicalHint": "Doctors are asked for one extra document (بيان معاودة).",
+    "sensitiveConsentLabel": "I consent to Masar Center processing the criminal record extract and medical report I will upload for this application, as described in the",
+    "sensitiveConsentLink": "Privacy Policy",
     "stepOf": "Step {current} of {total}",
     "fullNameLatin": "Full name (Latin letters)",
     "fullNameLatinPlaceholder": "As printed in your passport",

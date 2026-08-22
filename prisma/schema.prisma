@@ -66,6 +66,11 @@ model Application {
   passportNumber String?
   passportExpiry DateTime?
   data           Json              @default("{}")
+  // Timestamp, not a boolean: an audit trail proving *when* explicit consent
+  // was given for sensitive documents (criminal record, medical report — see
+  // needsSensitiveDataConsent() in src/lib/wizard.ts), not just that it was.
+  // Set once, on first consent, and never overwritten by a later save.
+  sensitiveDataConsentAt DateTime?
   submittedAt    DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt

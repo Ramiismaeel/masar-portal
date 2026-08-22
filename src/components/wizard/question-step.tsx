@@ -30,6 +30,8 @@ export function QuestionStep({
   options,
   defaultValue,
   locale,
+  showSensitiveConsent,
+  sensitiveConsentGiven,
 }: {
   applicationId: string;
   legend: string;
@@ -37,6 +39,13 @@ export function QuestionStep({
   options: readonly Option[];
   defaultValue?: string;
   locale: Locale;
+  /** Only Medical applications ever collect a criminal record extract or a
+   *  medical report — see needsSensitiveDataConsent() in src/lib/wizard.ts. */
+  showSensitiveConsent?: boolean;
+  /** true once Application.sensitiveDataConsentAt is already set — the
+   *  checkbox then just reflects that, and re-checking it isn't required to
+   *  save a later edit. */
+  sensitiveConsentGiven?: boolean;
 }) {
   const t = useTranslations("Wizard");
   const [state, formAction] = useActionState(
@@ -91,6 +100,36 @@ export function QuestionStep({
           </p>
         )}
       </fieldset>
+
+      {showSensitiveConsent && (
+        <div className="flex flex-col gap-2">
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3.5 text-start has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+            <input
+              type="checkbox"
+              name="sensitiveDataConsent"
+              defaultChecked={sensitiveConsentGiven}
+              disabled={sensitiveConsentGiven}
+              className="mt-0.5 size-4 shrink-0 accent-primary"
+            />
+            <span className="text-sm text-card-foreground">
+              {t("sensitiveConsentLabel")}{" "}
+              <Link
+                href="/datenschutz#sensitive-documents"
+                target="_blank"
+                className="underline hover:text-foreground"
+              >
+                {t("sensitiveConsentLink")}
+              </Link>
+            </span>
+          </label>
+
+          {state.fieldErrors.sensitiveDataConsent && (
+            <p className="text-sm text-destructive" role="alert">
+              {state.fieldErrors.sensitiveDataConsent}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 pt-2">
         <SubmitButton />

@@ -417,24 +417,18 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   Deliberately **not** added to `admin/layout.tsx` — same "admin is a different, staff-only,
   out-of-scope lane" reasoning already applied to i18n; it's gated behind auth+role, not a publicly
   reachable page Impressumspflicht is aimed at.
-- **Two real, unresolved gaps flagged in the policy text itself, not silently glossed over**:
-  1. Section 4 of the Datenschutz (`src/components/legal/datenschutz-en.tsx`) states that
-     uploading a criminal record extract or medical report **is** the applicant's explicit consent
-     to processing it — that's the current mechanism, because there is no actual consent checkbox
-     anywhere in the signup or wizard flow. A real opt-in checkbox before those specific uploads
-     would be the lower-risk version of this. Not built this phase — it's a schema + wizard UI
-     change, a separate decision from "write the legal pages," flagged for Rami rather than
-     assumed in scope.
-  2. Section 6 names Cloudmersive and Resend as processors without a confirmed data-processing
+- **Three real, unresolved gaps flagged in the policy text itself, not silently glossed over**
+  (Section 4's gap closed the same week — see "Sensitive-document consent checkbox" below):
+  1. Section 6 names Cloudmersive and Resend as processors without a confirmed data-processing
      region — unlike Neon/R2/Vercel, which this project's own env config and CLAUDE.md already
      pin to the EU. Worth confirming both have a signed DPA and, if they process outside the
      EU/EEA, that Standard Contractual Clauses are actually in place — the policy text says this is
      relied on, so it needs to be true, not just written.
-  3. **Also flagged, not resolved**: the Impressum's "Represented by" lists only Morhaf Esmail as
+  2. **Also flagged, not resolved**: the Impressum's "Represented by" lists only Morhaf Esmail as
      Geschäftsführer, matching the source page exactly — even though masar-center.de's own "About
      us" page names Rami as a co-founder too. Left as the one name that matches the legally filed
      register entry rather than the marketing copy; worth Rami confirming this is still accurate.
-  4. No VAT ID (USt-IdNr.) appears on the source Impressum, only a Steuernummer — consistent with
+  3. No VAT ID (USt-IdNr.) appears on the source Impressum, only a Steuernummer — consistent with
      small-business (§19 UStG) status, but not verified, just carried over as-is.
 - Verified live against a real production build (`next build` + `next start`), not dev mode: both
   pages confirmed rendering correctly in Arabic (RTL, all 12 Datenschutz sections, all Impressum
@@ -443,6 +437,36 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   links confirmed present and correctly pointing at `/impressum`/`/datenschutz` on the home page,
   `(app)/dashboard`, and via redirect-when-signed-in on `/login` (confirming `(auth)/layout.tsx`'s
   footer too, since a signed-in visitor never actually sees the auth pages themselves).
+
+### Sensitive-document consent checkbox (Phase 8 follow-up, Aug 2026)
+- Closes gap #1 above: uploading a criminal record extract or medical report was Section 4's
+  *stated* consent mechanism, but no real opt-in ever existed anywhere in the app. Scoped to
+  **Medical (D16) only** — the one category that ever collects `CRIMINAL_RECORD` or
+  `MEDICAL_REPORT` (checked `src/lib/checklists.ts`) — rather than a checkbox every applicant sees
+  regardless of relevance.
+- **One checkbox, at wizard time, not per-upload** (Rami's choice over a per-file checkbox on the
+  checklist page) — added to the Medical question step (`QuestionStep`,
+  `src/components/wizard/question-step.tsx`), the same step that already asks profession, rather
+  than a new wizard step. `needsSensitiveDataConsent(category)` in `src/lib/wizard.ts` is the one
+  place that decides which categories need it.
+- **Recorded, not just gated** — `Application.sensitiveDataConsentAt DateTime?` (migration
+  `add_sensitive_data_consent`). A timestamp, not a boolean, so there's an actual audit trail of
+  *when* consent was given, not just that it was — matters for GDPR accountability on data this
+  sensitive.
+- **Set once, on the null → given transition, never overwritten.** `saveQuestionStep`
+  (`src/lib/actions/wizard.ts`) only requires and only writes the checkbox when
+  `sensitiveDataConsentAt` is still null; once given, later saves (e.g. changing the profession
+  answer) don't force re-consent, and the checkbox comes back pre-checked and disabled
+  (`sensitiveConsentGiven` prop) reflecting the stored value rather than local UI state.
+- Section 4 of the Datenschutz (`datenschutz-en.tsx` / `-ar.tsx`) rewritten to describe the real
+  checkbox instead of "uploading is consent," with a `#sensitive-documents` anchor the checkbox's
+  label links to (same "server owns the source of truth" pattern already used for the cookie
+  banner's `#cookies` anchor).
+- Verified live against the dev database, in Arabic (not just typechecked): the checkbox renders
+  only for a Medical draft application; submitting with a profession chosen but the box unchecked
+  blocks with a field error and does not save; checking it saves, sets
+  `sensitiveDataConsentAt`, and lands on the checklist; revisiting the question step afterward
+  shows the checkbox pre-checked, disabled, and the previously-chosen profession still selected.
 
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |
