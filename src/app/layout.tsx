@@ -1,11 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Inter, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { cookies } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import type { Locale } from "@/i18n/locale";
 
 import { RegisterServiceWorker } from "@/components/register-service-worker";
+import { CookieConsentBanner } from "@/components/cookie-consent-banner";
+import { COOKIE_CONSENT_COOKIE, isCookieConsent } from "@/lib/cookie-consent";
 
 import "./globals.css";
 
@@ -127,6 +130,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   const locale = await getLocale();
   const messages = await getMessages();
 
+  const cookieStore = await cookies();
+  const rawConsent = cookieStore.get(COOKIE_CONSENT_COOKIE)?.value;
+  const initialConsent = isCookieConsent(rawConsent) ? rawConsent : null;
+
   return (
     <html
       lang={locale}
@@ -137,6 +144,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <RegisterServiceWorker />
         <NextIntlClientProvider locale={locale} messages={messages}>
           {children}
+          <CookieConsentBanner initialConsent={initialConsent} />
         </NextIntlClientProvider>
       </body>
     </html>

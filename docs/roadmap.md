@@ -72,8 +72,15 @@ Any page added under `(app)` is protected by construction.
 - [x] **SEO/meta pass** (Aug 2026, between Phase 7 and 8) — locale-aware title/description/OG/
       Twitter cards, `noindex` on every authenticated section, `robots.txt` + `sitemap.xml`. See
       "SEO" below.
-- [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
-- [ ] **Phase 9** API docs for the mobile app.
+- [x] **Phase 8** Legal & brand shell — Impressum, portal-specific Datenschutz (EN/AR), cookie
+      consent banner, legal links wired into every layout. See "Legal & brand shell" below.
+- [ ] **Phase 9** Auth providers — Google sign-in/signup (deferred until Phase 8 shipped a real
+      privacy policy URL for its consent screen).
+- [ ] **Phase 10** Visual identity — dark/light mode, imagery, animation, header/footer redesign
+      matching masar-center.de.
+- [ ] **Phase 11** GDPR follow-through — self-service delete account, retention limits, audit log,
+      bulk ZIP export. (Was "Phase 8" before the roadmap split — renumbered, not dropped.)
+- [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
 
 ## Immediate next steps
 1. **No way to change a decision once made.** `decideApplication` only runs from
@@ -362,6 +369,80 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   `/dashboard` and `/admin` pages, `/robots.txt` and `/sitemap.xml` both serve correctly and
   both come back **static** (`○`) in a production build despite the rest of the app being
   fully dynamic.
+
+## Legal & brand shell (Phase 8, Aug 2026)
+- **Scope decision, made explicitly before building anything**: the original 9-phase roadmap had
+  no room for "Google sign-in" + "major visual redesign" as one lump. Split into four: Phase 8
+  (this one — Impressum/Datenschutz/cookie consent, since Google's OAuth consent screen wants a
+  real privacy policy URL, and there wasn't one), Phase 9 (Google OAuth, now unblocked), Phase 10
+  (the visual redesign itself — dark/light, imagery, animation, header/footer), Phase 11/12 (the
+  old Phase 8/9, renumbered, not dropped).
+- **Content is adapted from masar-center.de's own live `/impressum` and `/privacy` pages** (fetched
+  directly, not guessed), not copied wholesale — same reasoning as the SEO pass: this is the same
+  legal entity (Masar UG) so the Impressum's register/contact details carry over as-is, but the
+  Datenschutz (privacy policy) is **portal-specific, not a copy of the marketing site's**. The
+  marketing site's policy covers a public brochure site (contact forms, Google Analytics/GTM, Meta/
+  WhatsApp Business) — this portal collects a fundamentally different, more sensitive set of data
+  (passports, criminal record extracts, medical reports) and, confirmed by grepping the codebase,
+  has **zero analytics/tracking** anywhere. The portal's own Datenschutz names its own real
+  processors (Neon, Cloudflare R2, Cloudmersive, Resend, Vercel) and its own real data categories,
+  read from `prisma/schema.prisma` and `src/lib/checklists.ts` directly rather than assumed.
+- **Two kinds of bilingual content, and this is a third one, deliberately not reusing either
+  existing mechanism**: UI copy → `next-intl` messages; bilingual domain data → `pick()`. Long-form
+  legal prose is neither — too unwieldy as ICU-templated JSON strings, and not simple label pairs
+  either. `src/components/legal/{impressum,datenschutz}-{en,ar}.tsx` are plain JSX content
+  components, chosen per-page via `getLocale()` the same way `/impressum/page.tsx` and
+  `/datenschutz/page.tsx` pick between them — same "explicit locale, no ambient surprises" shape as
+  every other bilingual component in this app, just content-shaped instead of data-shaped.
+- **Cookie consent banner built ahead of actual need, at Rami's explicit request.** The portal sets
+  no non-essential cookies today (only Better Auth's session cookie and the locale-preference
+  cookie, both "strictly necessary"/functional and exempt from consent under GDPR/ePrivacy on their
+  own) — a banner is not legally required yet. Built anyway so a future analytics addition has
+  something to plug into (`hasAnalyticsConsent()` in `src/lib/cookie-consent.ts`) rather than
+  needing a consent system retrofitted later. `"necessary"` and `"all"` behave identically right
+  now — there is nothing optional to withhold yet.
+  - Same pattern as `LocaleSwitcher`/`setLocale`: a Server Action sets a plain cookie
+    (`src/lib/actions/cookie-consent.ts`), the client component calls it then `router.refresh()`
+    — no local dismissed-state to keep in sync with the real cookie, the server-read prop is the
+    only source of truth (`CookieConsentBanner`'s `initialConsent`, read in the root layout).
+  - **"Cookie settings"** in the footer (`CookieSettingsLink`) just deletes the cookie server-side
+    and refreshes — confirmed live that this makes the banner reappear correctly, both from a fresh
+    "Accept all" state and from a fresh page load.
+- **Legal links wired into every layout, not just the home page** — German Impressumspflicht
+  requires the Impressum reachable within ~2 clicks from anywhere on the site. Found live: only
+  `home-content.tsx`'s own footer had them (a `TODO` comment sitting there since Phase 3/4);
+  `(app)/layout.tsx` and `(auth)/layout.tsx` had no footer at all. Extracted the shared bit into
+  `LegalFooter` (`src/components/legal-footer.tsx`, explicit `locale` prop, same convention as
+  every other component `home-content.tsx` renders) and added a footer to all three layouts.
+  Deliberately **not** added to `admin/layout.tsx` — same "admin is a different, staff-only,
+  out-of-scope lane" reasoning already applied to i18n; it's gated behind auth+role, not a publicly
+  reachable page Impressumspflicht is aimed at.
+- **Two real, unresolved gaps flagged in the policy text itself, not silently glossed over**:
+  1. Section 4 of the Datenschutz (`src/components/legal/datenschutz-en.tsx`) states that
+     uploading a criminal record extract or medical report **is** the applicant's explicit consent
+     to processing it — that's the current mechanism, because there is no actual consent checkbox
+     anywhere in the signup or wizard flow. A real opt-in checkbox before those specific uploads
+     would be the lower-risk version of this. Not built this phase — it's a schema + wizard UI
+     change, a separate decision from "write the legal pages," flagged for Rami rather than
+     assumed in scope.
+  2. Section 6 names Cloudmersive and Resend as processors without a confirmed data-processing
+     region — unlike Neon/R2/Vercel, which this project's own env config and CLAUDE.md already
+     pin to the EU. Worth confirming both have a signed DPA and, if they process outside the
+     EU/EEA, that Standard Contractual Clauses are actually in place — the policy text says this is
+     relied on, so it needs to be true, not just written.
+  3. **Also flagged, not resolved**: the Impressum's "Represented by" lists only Morhaf Esmail as
+     Geschäftsführer, matching the source page exactly — even though masar-center.de's own "About
+     us" page names Rami as a co-founder too. Left as the one name that matches the legally filed
+     register entry rather than the marketing copy; worth Rami confirming this is still accurate.
+  4. No VAT ID (USt-IdNr.) appears on the source Impressum, only a Steuernummer — consistent with
+     small-business (§19 UStG) status, but not verified, just carried over as-is.
+- Verified live against a real production build (`next build` + `next start`), not dev mode: both
+  pages confirmed rendering correctly in Arabic (RTL, all 12 Datenschutz sections, all Impressum
+  sections) and in English (LTR); the cookie banner shows once, "Accept all" dismisses it and it
+  stays dismissed across a reload, "Cookie settings" in the footer reliably reopens it; footer
+  links confirmed present and correctly pointing at `/impressum`/`/datenschutz` on the home page,
+  `(app)/dashboard`, and via redirect-when-signed-in on `/login` (confirming `(auth)/layout.tsx`'s
+  footer too, since a signed-in visitor never actually sees the auth pages themselves).
 
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |

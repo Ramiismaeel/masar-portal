@@ -13,6 +13,24 @@
   "Common": {
     "backToDashboard": "Back to dashboard"
   },
+  "Footer": {
+    "impressum": "Impressum",
+    "privacy": "Privacy",
+    "cookieSettings": "Cookie settings"
+  },
+  "CookieConsent": {
+    "title": "We use cookies",
+    "body": "We use strictly necessary cookies to keep you signed in and remember your language — these don't need your consent under GDPR/ePrivacy. We do not currently use analytics or advertising cookies; if that ever changes, we will ask you again before doing so.",
+    "acceptAll": "Accept all",
+    "necessaryOnly": "Necessary only",
+    "learnMore": "Learn more"
+  },
+  "LegalPage": {
+    "backToHome": "Back to home",
+    "lastUpdated": "Last updated: {date}",
+    "impressumTitle": "Impressum",
+    "privacyTitle": "Privacy Policy"
+  },
   "AppLayout": {
     "admin": "Admin",
     "myDashboard": "My dashboard",
@@ -33,9 +51,7 @@
     "step2Body": "A short form, two steps. It takes about two minutes on a phone.",
     "step3Title": "Upload your documents",
     "step3Body": "You get a personalised checklist. Masar reviews each file and tells you what is missing.",
-    "footerRights": "© {year} Masar Center",
-    "impressum": "Impressum",
-    "privacy": "Privacy"
+    "footerRights": "© {year} Masar Center"
   },
   "CategoryCard": {
     "start": "Start"
