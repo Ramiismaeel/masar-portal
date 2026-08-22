@@ -3,9 +3,11 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { r2, R2_BUCKET } from "@/lib/r2";
 import { isCategoryValue } from "@/lib/categories";
 import type { VisaCategory } from "@/generated/prisma/client";
 
@@ -105,4 +107,74 @@ export async function createApplication(
   // redirect() signals by throwing, so it must sit OUTSIDE the try/catch above —
   // inside, our own catch block would swallow it and the redirect would vanish.
   redirect(`/applications/${applicationId}/wizard`);
+}
+
+export type DeleteApplicationState = { error: string | null };
+
+/**
+ * Permanently deletes a DRAFT application and everything under it.
+ *
+ * Once submitted, the roadmap's edit-gating rule takes over (only
+ * REJECTED/NEEDS_REVISION allow changes) — deletion follows the same logic
+ * one step further: PENDING_REVIEW and beyond can't be deleted at all, since
+ * an admin may already be looking at it, or it may already be decided.
+ */
+export async function deleteApplication(
+  _prev: DeleteApplicationState,
+  formData: FormData,
+): Promise<DeleteApplicationState> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) {
+    return { error: "You need to be signed in." };
+  }
+
+  const rawId = formData.get("applicationId");
+  if (typeof rawId !== "string") {
+    return { error: "Application not found." };
+  }
+
+  // Scoped by BOTH id and userId — same IDOR guard as everywhere else.
+  const application = await prisma.application.findFirst({
+    where: { id: rawId, userId: session.user.id },
+    select: {
+      id: true,
+      status: true,
+      documents: { select: { storageKey: true } },
+    },
+  });
+
+  if (!application) {
+    return { error: "Application not found." };
+  }
+
+  if (application.status !== "DRAFT") {
+    return { error: "Submitted applications can no longer be deleted." };
+  }
+
+  const storageKeys = application.documents.map((d) => d.storageKey);
+
+  try {
+    // onDelete: Cascade removes the Document rows in the same statement —
+    // the database is the source of truth here, deleted atomically.
+    await prisma.application.delete({ where: { id: application.id } });
+  } catch (error) {
+    console.error("deleteApplication: db delete failed", error);
+    return { error: "Could not delete the application. Please try again." };
+  }
+
+  // Best-effort R2 cleanup, same trade-off as document deletion: the
+  // database is already correct even if an object delete fails here.
+  await Promise.all(
+    storageKeys.map((key) =>
+      r2
+        .send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }))
+        .catch((error) => {
+          console.error("deleteApplication: failed to delete R2 object", error);
+        }),
+    ),
+  );
+
+  revalidatePath("/dashboard");
+
+  redirect("/dashboard");
 }

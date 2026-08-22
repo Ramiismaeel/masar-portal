@@ -1,4 +1,5 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
  * S3_ENDPOINT in .env is the full R2 bucket URL
@@ -30,3 +31,19 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export const R2_BUCKET = process.env.S3_BUCKET!;
+
+/**
+ * A time-limited URL an admin's browser can fetch a document from directly.
+ *
+ * The bucket itself stays private — nothing is ever made public — so this is
+ * the only way to view an uploaded file. Signed for 10 minutes: long enough
+ * to open the file, short enough that a copied/shared link doesn't stay a
+ * live door into someone's passport scan.
+ */
+export function getDocumentDownloadUrl(storageKey: string): Promise<string> {
+  return getSignedUrl(
+    r2,
+    new GetObjectCommand({ Bucket: R2_BUCKET, Key: storageKey }),
+    { expiresIn: 600 },
+  );
+}
