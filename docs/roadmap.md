@@ -69,6 +69,9 @@ Any page added under `(app)` is protected by construction.
       loop. See "Admin dashboard" below.
 - [x] **Phase 7** EN/AR language switch, RTL, translated applicant-facing UI (see "i18n" below),
       plus installable PWA — manifest, service worker, offline fallback (see "PWA" below).
+- [x] **SEO/meta pass** (Aug 2026, between Phase 7 and 8) — locale-aware title/description/OG/
+      Twitter cards, `noindex` on every authenticated section, `robots.txt` + `sitemap.xml`. See
+      "SEO" below.
 - [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
 - [ ] **Phase 9** API docs for the mobile app.
 
@@ -250,6 +253,61 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   dev mode: service worker registers and activates, manifest/icons/theme-color all correctly
   auto-linked in `<head>`, `/offline.html` precached, `/manifest.webmanifest` serves the right
   JSON, `/sw.js` serves real compiled content with the precache manifest inside it.
+
+## SEO (Aug 2026)
+- **Adapted from `masar-center.de` / `masar-center.de/ar`'s own `<head>` — read directly from
+  the live markup, not guessed — not copied wholesale.** This is a different product from the
+  parent marketing site, and three things were deliberately changed, not just carried over:
+  - **No hreflang alternates.** The parent site has real per-language URLs (`/`, `/de`, `/ar`) to
+    link between; this app has exactly one URL for both languages on purpose (see "i18n" above —
+    routed locales would break "switching language must not lose form state"). hreflang pointing
+    multiple language tags at the *same* URL would be meaningless to a crawler at best, so it's
+    left out entirely rather than added just because the reference site has it.
+  - **`metadataBase`/canonical/sitemap all resolve from `BETTER_AUTH_URL`**, not a hardcoded
+    domain — this environment's own origin already lives in that env var (prod, preview, and
+    local each have their own), so metadata is automatically correct in whichever environment
+    it's built in without a separate SEO-specific env var.
+  - **`og:site_name` is "Masar Portal," not "Masar UG"** — title/description/keywords all
+    describe what *this product* does (upload documents, follow a checklist, get reviewed), not
+    the parent company's general consulting pitch.
+- **Locale-aware via `generateMetadata()`, not a static `metadata` export** — title, description,
+  and `og:locale` (`en_US`/`ar_SY`) all follow the same cookie-derived locale that decides
+  `dir`/`lang` in the layout body. Copy lives in `messages/*.json`'s `Seo` namespace, same
+  mechanism as every other translated string in the app, not a separate one-off. Confirmed live
+  in both languages — title, description, `og:locale`, and `lang`/`dir` all flip together.
+- **Every authenticated section is `noindex, nofollow`** — `(app)/layout.tsx` and
+  `admin/layout.tsx` each export their own `metadata` overriding the root's permissive default.
+  Confirmed live against a real logged-in session (not just reading the code) that `/dashboard`
+  and `/admin` both actually render `noindex, nofollow`, not just the unauthenticated redirect
+  target. Auth pages (`/login`, `/signup`) deliberately stay indexable — someone searching
+  "masar portal login" should find it; only the pages holding personal data are excluded.
+- **`robots.txt` and the `noindex` meta tags are deliberately redundant, not overlapping** —
+  `src/app/robots.ts` stops a crawler from *fetching* `/dashboard`, `/applications`, `/admin`,
+  `/api` at all; the per-layout `noindex` meta stops a page from being *indexed* even if somehow
+  reached. Neither alone is sufficient: a `Disallow` doesn't retroactively deindex a page some
+  other site already linked to, and a `noindex` tag only works if the crawler actually requests
+  the page to read it.
+- **`sitemap.xml` lists only the home page.** It's the one genuinely public, content-bearing URL
+  — login/signup carry no unique search value over it, and everything else is already excluded
+  via `robots.ts`.
+- **`theme-color` now has real light/dark values** (`#1a6b4a` light / `#0d4d35` dark) — read
+  directly from `masar-center.de`'s own `<head>`, not invented; the Phase 7 PWA pass had shipped
+  a single static `#0d4d35` for both. `color-scheme: light dark` added alongside it.
+- **`og:image` is downloaded and self-hosted** (`public/og-image.webp`), not a live cross-domain
+  reference to `masar-center.de` — a link preview shouldn't depend on a sibling site staying up,
+  keeping the same filename, and never changing its image dimensions out from under whatever
+  `width`/`height` we declared. That exact failure mode showed up immediately: the source site's
+  own `og:image:width` meta tag says `1042`, but the actual downloaded file is `1200×630` — their
+  tag is stale, caught by inspecting the real file rather than trusting the declared value. Same
+  reasoning that already justified downloading the PWA icons instead of referencing them live.
+  Still the parent brand's asset, not a portal-specific graphic — worth a real one (ideally a
+  portal screenshot) later, but at least not fetched from a third party on every crawl.
+- Verified live against the dev server, not just typechecked: full rendered `<head>` inspected
+  in both languages (title/description/keywords/OG/Twitter/canonical/theme-color all correct),
+  `noindex, nofollow` confirmed via `document.querySelector` on real authenticated
+  `/dashboard` and `/admin` pages, `/robots.txt` and `/sitemap.xml` both serve correctly and
+  both come back **static** (`○`) in a production build despite the rest of the app being
+  fully dynamic.
 
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |
