@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 
 import type { CategoryMeta } from "@/lib/categories";
 import { pick } from "@/i18n/pick";
@@ -13,9 +13,20 @@ type CategoryCardProps = {
   locale: Locale;
 };
 
-export function CategoryCard({ category, href, locale }: CategoryCardProps) {
+export async function CategoryCard({ category, href, locale }: CategoryCardProps) {
   const Icon = category.icon;
-  const t = useTranslations("CategoryCard");
+  // getTranslations({ locale, ... }), not the sync useTranslations() hook —
+  // found live, not anticipated: useTranslations() has no locale-override
+  // option at all (checked its type — only takes a namespace), so it always
+  // reads the AMBIENT cookie-derived locale regardless of the `locale` prop
+  // this component already receives and correctly uses for pick() below.
+  // On /ar (src/app/ar/page.tsx, a fixed-locale page for a cookie-less
+  // visitor) that mismatch meant the category label/blurb were correctly
+  // Arabic via pick(), but the "Start" button stayed English — same
+  // request-config bug already fixed once in src/i18n/request.ts, just
+  // surfacing again through next-intl's OTHER server API for reading
+  // translated strings.
+  const t = await getTranslations({ locale, namespace: "CategoryCard" });
 
   return (
     <Link

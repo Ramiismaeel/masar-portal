@@ -257,12 +257,7 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 ## SEO (Aug 2026)
 - **Adapted from `masar-center.de` / `masar-center.de/ar`'s own `<head>` — read directly from
   the live markup, not guessed — not copied wholesale.** This is a different product from the
-  parent marketing site, and three things were deliberately changed, not just carried over:
-  - **No hreflang alternates.** The parent site has real per-language URLs (`/`, `/de`, `/ar`) to
-    link between; this app has exactly one URL for both languages on purpose (see "i18n" above —
-    routed locales would break "switching language must not lose form state"). hreflang pointing
-    multiple language tags at the *same* URL would be meaningless to a crawler at best, so it's
-    left out entirely rather than added just because the reference site has it.
+  parent marketing site, and things were deliberately changed, not just carried over:
   - **`metadataBase`/canonical/sitemap all resolve from `BETTER_AUTH_URL`**, not a hardcoded
     domain — this environment's own origin already lives in that env var (prod, preview, and
     local each have their own), so metadata is automatically correct in whichever environment
@@ -287,9 +282,68 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   reached. Neither alone is sufficient: a `Disallow` doesn't retroactively deindex a page some
   other site already linked to, and a `noindex` tag only works if the crawler actually requests
   the page to read it.
-- **`sitemap.xml` lists only the home page.** It's the one genuinely public, content-bearing URL
-  — login/signup carry no unique search value over it, and everything else is already excluded
-  via `robots.ts`.
+- **`sitemap.xml` lists the home page and `/ar`** (see below) — the two genuinely public,
+  content-bearing URLs. Login/signup carry no unique search value over either, and everything
+  else is already excluded via `robots.ts`.
+- **`/ar` — a real, separately-crawlable Arabic mirror of the home page.** Raised directly by
+  Rami: sharing the portal link in an Arabic-speaking channel got an English preview no matter
+  what, because a link-preview crawler (WhatsApp/Twitter/Facebook) makes one cookie-less request
+  and only ever sees whatever the *default* locale renders — there was no URL to point an Arabic
+  share at. `src/app/ar/page.tsx` is the one deliberate exception to "one URL for both
+  languages" (see "i18n" above), scoped to the home page only — the rest of the app (wizard,
+  checklist, dashboard, auth pages) still has exactly one URL per page; this doesn't reverse
+  that decision, it works around the one place it collides with sharing/discovery.
+  `src/components/home-content.tsx` now holds the shared markup, taking `locale` as an explicit
+  prop rather than reading it ambiently, so both `/` (cookie-derived) and `/ar` (hardcoded) can
+  render it correctly. `alternates.languages` (hreflang) now links `/` ↔ `/ar` — this reverses
+  the earlier "no hreflang, meaningless with one URL" reasoning, but only for these two pages
+  specifically: a genuine second URL now exists, so pointing crawlers between them is correct
+  again. Scoped to `src/app/page.tsx`'s own `generateMetadata` (not the root layout), since the
+  root layout wraps every route — putting hreflang there would put an "Arabic version at /ar"
+  claim on `/dashboard` and `/login` too, which is simply false.
+  - **Three real bugs surfaced building this, all confirmed live, none anticipated going in.**
+    Two are `next-intl`'s "explicit locale override" mechanism silently not working at all; the
+    third is a Next.js metadata-templating quirk that's easy to hit any time a page defines its
+    own title independent of its parent layout:
+    1. `src/i18n/request.ts`'s callback receives `{ locale }` — the explicit override passed by
+       calls like `getTranslations({ locale: "ar", ... })` — but the first version of this file
+       ignored it and unconditionally re-derived locale from the cookie every time. Every
+       explicit-locale call was silently overridden back to whatever the visitor's cookie (or
+       lack of one) said — `/ar` rendered fully in English for a cookie-less request, with no
+       error anywhere. Fixed by checking the passed-in `locale` param first, falling back to the
+       cookie read only when none was given.
+    2. Even after that fix, `CategoryCard`'s "Start" button stayed English on `/ar` while its
+       `pick(locale, …)`-driven label/blurb correctly went Arabic. Cause: it used the *sync*
+       `useTranslations("CategoryCard")` hook-style API, which — checked its type definition to
+       be sure — has no locale-override parameter *at all*, unlike the *async* `getTranslations`
+       used everywhere else. It was reading the ambient cookie-derived locale regardless of the
+       `locale` prop the component already had and already used correctly one line below.
+       Converted the component to `async` + `getTranslations({ locale, namespace: … })` to match.
+       Worth remembering: on this app's few fixed-locale pages, the sync `useTranslations()` hook
+       is not safe to use in a Server Component — only the async form, called with an explicit
+       `locale`, is.
+    3. With both of those fixed, `/ar`'s `<title>` still rendered as "بوابة مسار | Masar
+       Portal" — Arabic default, but an **English** template suffix. A page's own
+       `title.template` never formats that page's *own* title, only its descendants' (`/ar` has
+       none) — the CURRENT segment's title gets wrapped by the nearest *ancestor's* template
+       instead, which here was the root layout's cookie-derived (so, English, for this
+       cookie-less request) one. Fixed with `title: { absolute: title }`, Next's documented
+       escape hatch that skips every ancestor template. `/` never hit this because it never sets
+       its own `title` at all, so it was never a "descendant with an explicit title" needing
+       wrapping in the first place — the bug only shows up once a page defines `title.default`
+       for itself, which is exactly what a fixed-locale page like `/ar` has to do.
+  - The `LocaleSwitcher` needed a small extension for this: on `/ar`, the normal cookie-toggle-
+    then-`router.refresh()` behavior would flip the cookie and visibly do nothing, since `/ar`'s
+    content is hardcoded to Arabic regardless of the cookie. Added an optional `navigateTo` prop
+    — when set, it navigates there after switching instead of refreshing in place. `/` passes
+    nothing and keeps the plain, already-confirmed-not-to-lose-form-state behavior; `/ar` passes
+    `navigateTo="/"`.
+  - Verified live, full round trip: `/ar` fetched with no cookie at all renders correctly in
+    Arabic throughout (title, description, hero, all four category cards' labels *and* Start
+    buttons, footer) with `og:locale: ar_SY` and canonical `/ar`; clicking "English" in the
+    header navigates to `/` and `/` renders correctly in English; `/`'s own hreflang correctly
+    points back to `/ar` and vice versa; `sitemap.xml` lists both with the alternate-language
+    annotations Google's sitemap format supports.
 - **`theme-color` now has real light/dark values** (`#1a6b4a` light / `#0d4d35` dark) — read
   directly from `masar-center.de`'s own `<head>`, not invented; the Phase 7 PWA pass had shipped
   a single static `#0d4d35` for both. `color-scheme: light dark` added alongside it.
