@@ -191,6 +191,15 @@ Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
   it dynamically at request time, and Next's `serverExternalPackages` (which
   `@serwist/turbopack`'s own `withSerwist` sets) means it's resolved from this project's own
   `node_modules`, not bundled in, so it has to actually be there.
+  `createSerwistRoute`'s `useNativeEsbuild` option **must be pinned explicitly** — its default is
+  platform-dependent (`true` on Windows, `false` everywhere else), which is exactly the kind of
+  default that works on one machine and breaks in CI. Found live: worked locally (Windows,
+  native `esbuild`), then the very next Vercel deploy (Linux) failed with `Cannot find package
+  'esbuild-wasm'` — the default silently switched code paths between environments. Fixed by
+  passing `useNativeEsbuild: true` explicitly in `src/app/[path]/route.ts`, so only `esbuild`
+  (already installed) is ever needed anywhere; `esbuild`'s own postinstall resolves the correct
+  platform binary via `optionalDependencies`, so pinning to native works cross-platform without
+  needing `esbuild-wasm` as a second dependency.
 - **No auto-registration on this path.** `@serwist/next`'s plugin injects a registration script
   for you (`register: true` by default); `@serwist/turbopack` doesn't attempt this at all — it
   only builds and serves the file. `src/components/register-service-worker.tsx` does it by hand

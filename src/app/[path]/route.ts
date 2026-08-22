@@ -13,8 +13,18 @@ import { createSerwistRoute } from "@serwist/turbopack";
  * [path] (not [...path]) because the underlying manifest only ever produces
  * single-segment filenames (sw.js, sw.js.map) — this only ever serves the
  * two, dynamicParams: false rejects anything else with a 404.
+ *
+ * useNativeEsbuild is pinned explicitly rather than left to its default,
+ * which is platform-dependent: true on Windows, false everywhere else. That
+ * default broke the Vercel build (Linux) after working locally (Windows) —
+ * left alone, it wants `esbuild-wasm` on Vercel but `esbuild` locally, and
+ * only the latter was installed. Pinning to native `esbuild` everywhere
+ * needs just the one dependency; `esbuild`'s own install step resolves the
+ * correct platform binary via optionalDependencies, so this works
+ * cross-platform without needing esbuild-wasm at all.
  */
 export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } =
   createSerwistRoute({
     swSrc: "src/app/sw.ts",
+    useNativeEsbuild: true,
   });
