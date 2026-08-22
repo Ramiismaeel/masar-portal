@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { CATEGORIES, type CategoryValue } from "@/lib/categories";
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 
 /**
  * Offers only the categories the user has NOT started.
@@ -10,14 +13,21 @@ import { CATEGORIES, type CategoryValue } from "@/lib/categories";
  * constraint and the Server Action are the enforcing half — this just avoids
  * showing a button that would bounce the user straight back.
  */
-export function CategoryPicker({ taken }: { taken: CategoryValue[] }) {
+export function CategoryPicker({
+  taken,
+  locale,
+}: {
+  taken: CategoryValue[];
+  locale: Locale;
+}) {
+  const t = useTranslations("CategoryPicker");
   const takenSet = new Set<string>(taken);
   const available = CATEGORIES.filter((c) => !takenSet.has(c.value));
 
   if (available.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
-        You have an application in every category.
+        {t("allTaken")}
       </p>
     );
   }
@@ -37,7 +47,7 @@ export function CategoryPicker({ taken }: { taken: CategoryValue[] }) {
                 <Icon className="size-4" aria-hidden="true" />
               </span>
               <span className="text-sm font-medium text-card-foreground">
-                {category.labelEn}
+                {pick(locale, category.labelEn, category.labelAr)}
               </span>
               <Plus
                 className="ms-auto size-4 text-muted-foreground"

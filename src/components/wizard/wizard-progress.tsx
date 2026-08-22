@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 export function WizardProgress({
   step,
   total,
@@ -6,13 +8,13 @@ export function WizardProgress({
   step: number;
   total: number;
 }) {
+  const t = useTranslations("Wizard");
   const current = Math.min(step + 1, total);
+  const label = t("stepOf", { current, total });
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        Step {current} of {total}
-      </p>
+      <p className="text-sm text-muted-foreground">{label}</p>
 
       <div
         className="flex gap-1.5"
@@ -20,7 +22,7 @@ export function WizardProgress({
         aria-valuenow={current}
         aria-valuemin={1}
         aria-valuemax={total}
-        aria-label={`Step ${current} of ${total}`}
+        aria-label={label}
       >
         {Array.from({ length: total }, (_, index) => (
           <span

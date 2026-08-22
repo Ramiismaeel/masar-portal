@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
 export function ResendEmailButton({ email }: { email: string }) {
+  const t = useTranslations("Auth.Resend");
   const [isResending, setIsResending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,27 +22,21 @@ export function ResendEmailButton({ email }: { email: string }) {
       });
 
       if (error) {
-        setError(
-          error.message ?? "Could not send the email. Please try again.",
-        );
+        setError(error.message ?? t("errorFallback"));
         return;
       }
 
       setSent(true);
     } catch (err) {
       console.error(err);
-      setError("Could not send the email. Please try again.");
+      setError(t("errorFallback"));
     } finally {
       setIsResending(false);
     }
   };
 
   if (sent) {
-    return (
-      <span className="text-sm font-medium">
-        Email sent — check your inbox.
-      </span>
-    );
+    return <span className="text-sm font-medium">{t("sent")}</span>;
   }
 
   return (
@@ -51,7 +47,7 @@ export function ResendEmailButton({ email }: { email: string }) {
         onClick={handleResend}
         disabled={isResending}
       >
-        {isResending ? "Sending…" : "Resend email"}
+        {isResending ? t("sending") : t("button")}
       </Button>
 
       {error && <span className="text-sm text-destructive">{error}</span>}

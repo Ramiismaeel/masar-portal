@@ -1,28 +1,25 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { findCategory } from "@/lib/categories";
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
 import { isWizardComplete, totalSteps } from "@/lib/wizard";
 import type { UserApplication } from "@/lib/applications";
 import { Button } from "@/components/ui/button";
-
-// Fixed locale, not the visitor's: this renders on the server, and letting the
-// output depend on the server's locale is how you get hydration mismatches.
-// Phase 7 will swap this for the user's chosen locale explicitly.
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 
 export function ApplicationCard({
   application,
+  locale,
   highlighted = false,
 }: {
   application: UserApplication;
+  locale: Locale;
   highlighted?: boolean;
 }) {
+  const t = useTranslations("ApplicationCard");
   const category = findCategory(application.category);
   if (!category) return null;
 
@@ -37,6 +34,15 @@ export function ApplicationCard({
     ? `/applications/${application.id}`
     : `/applications/${application.id}/wizard`;
 
+  // Locale-dependent, so it can't be a module-level constant any more (Phase
+  // 7 note this comment used to leave for itself) — Arabic gets Arabic month
+  // names, but Western digits throughout the app stay consistent with the
+  // Latin-only passport/phone fields elsewhere, so numberingSystem is pinned.
+  const dateFormatter = new Intl.DateTimeFormat(
+    locale === "ar" ? "ar" : "en-GB",
+    { day: "numeric", month: "short", year: "numeric", numberingSystem: "latn" },
+  );
+
   return (
     <li
       className={`flex flex-col gap-4 rounded-xl border bg-card p-5 transition-colors ${
@@ -50,10 +56,10 @@ export function ApplicationCard({
           </span>
           <div className="flex flex-col text-start">
             <span className="font-semibold text-card-foreground">
-              {category.labelEn}
+              {pick(locale, category.labelEn, category.labelAr)}
             </span>
             <span className="text-xs text-muted-foreground">
-              Started {dateFormatter.format(application.createdAt)}
+              {t("started", { date: dateFormatter.format(application.createdAt) })}
             </span>
           </div>
         </div>
@@ -61,16 +67,17 @@ export function ApplicationCard({
         <span
           className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
         >
-          {status.labelEn}
+          {pick(locale, status.labelEn, status.labelAr)}
         </span>
       </div>
 
       <p className="text-sm text-muted-foreground">
         {isDraft && !complete
-          ? `Questions: step ${Math.min(application.currentStep + 1, total)} of ${total}`
-          : `${application._count.documents} document${
-              application._count.documents === 1 ? "" : "s"
-            } uploaded`}
+          ? t("questionsStep", {
+              current: Math.min(application.currentStep + 1, total),
+              total,
+            })
+          : t("documentsUploaded", { count: application._count.documents })}
       </p>
 
       <div className="flex flex-wrap gap-2">
@@ -80,7 +87,7 @@ export function ApplicationCard({
           nativeButton={false}
           render={<Link href={href} />}
         >
-          {isDraft && !complete ? "Continue" : "View checklist"}
+          {isDraft && !complete ? t("continue") : t("viewChecklist")}
           <ArrowRight className="size-4 rtl:-scale-x-100" aria-hidden="true" />
         </Button>
       </div>

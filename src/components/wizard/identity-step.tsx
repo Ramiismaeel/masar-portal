@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { useTranslations } from "next-intl";
 
 import { saveIdentityStep } from "@/lib/actions/wizard";
 import { EMPTY_WIZARD_STATE } from "@/lib/wizard";
@@ -20,9 +21,10 @@ function FieldError({ message }: { message?: string }) {
 
 function SubmitButton() {
   const { pending } = useFormStatus();
+  const t = useTranslations("Wizard");
   return (
     <Button type="submit" size="lg" disabled={pending}>
-      {pending ? "Saving…" : "Save & continue"}
+      {pending ? t("saving") : t("saveAndContinue")}
     </Button>
   );
 }
@@ -39,6 +41,7 @@ export function IdentityStep({
     passportExpiry: string; // "YYYY-MM-DD" or ""
   };
 }) {
+  const t = useTranslations("Wizard");
   const [state, formAction] = useActionState(
     saveIdentityStep,
     EMPTY_WIZARD_STATE,
@@ -58,25 +61,25 @@ export function IdentityStep({
       )}
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="fullNameLatin">Full name (Latin letters)</Label>
+        <Label htmlFor="fullNameLatin">{t("fullNameLatin")}</Label>
         <Input
           id="fullNameLatin"
           name="fullNameLatin"
           defaultValue={defaults.fullNameLatin}
-          placeholder="As printed in your passport"
+          placeholder={t("fullNameLatinPlaceholder")}
           autoComplete="name"
           dir="ltr"
           required
           aria-invalid={Boolean(state.fieldErrors.fullNameLatin)}
         />
         <p className="text-xs text-muted-foreground">
-          Exactly as it appears in the machine-readable line of your passport.
+          {t("fullNameLatinHint")}
         </p>
         <FieldError message={state.fieldErrors.fullNameLatin} />
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="phone">Phone number</Label>
+        <Label htmlFor="phone">{t("phone")}</Label>
         <Input
           id="phone"
           name="phone"
@@ -93,7 +96,7 @@ export function IdentityStep({
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="passportNumber">Passport number</Label>
+        <Label htmlFor="passportNumber">{t("passportNumber")}</Label>
         <Input
           id="passportNumber"
           name="passportNumber"
@@ -108,7 +111,7 @@ export function IdentityStep({
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="passportExpiry">Passport expiry date</Label>
+        <Label htmlFor="passportExpiry">{t("passportExpiry")}</Label>
         <Input
           id="passportExpiry"
           name="passportExpiry"

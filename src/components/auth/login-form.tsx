@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function LoginForm() {
+  const t = useTranslations("Auth.Login");
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,12 +25,12 @@ export function LoginForm() {
 
     // Client-side checks before submitting
     if (!email || !password) {
-      setError("All fields are required");
+      setError(t("errorRequired"));
       return;
     }
 
     if (!email.includes("@")) {
-      setError("Please enter a valid email address");
+      setError(t("errorEmail"));
       return;
     }
 
@@ -41,7 +43,7 @@ export function LoginForm() {
       });
 
       if (error) {
-        setError("Invalid email or password");
+        setError(t("errorInvalid"));
         setIsSubmitting(false);
         return; // ← stop here
       }
@@ -49,7 +51,7 @@ export function LoginForm() {
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      setError(t("errorGeneric"));
       console.error(err);
     } finally {
       setIsSubmitting(false);
@@ -60,7 +62,7 @@ export function LoginForm() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-center">Login to your account</CardTitle>
+          <CardTitle className="text-center">{t("title")}</CardTitle>
         </CardHeader>
         <CardContent>
           {error && (
@@ -71,14 +73,15 @@ export function LoginForm() {
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("email")}</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="[EMAIL_ADDRESS]"
+                placeholder="you@example.com"
                 autoComplete="email"
+                dir="ltr"
                 required
                 disabled={isSubmitting}
               />
@@ -86,12 +89,12 @@ export function LoginForm() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("password")}</Label>
                 <Link
                   href="/forgot-password"
                   className="text-sm text-primary underline-offset-4 hover:underline"
                 >
-                  Forgot password?
+                  {t("forgotPassword")}
                 </Link>
               </div>
               <Input
@@ -107,16 +110,16 @@ export function LoginForm() {
             </div>
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Logging in..." : "Login"}
+              {isSubmitting ? t("submitting") : t("submit")}
             </Button>
           </form>
           <p className="mt-4 text-center text-sm">
-            Don&#39;t have an account?{" "}
+            {t("noAccount")}{" "}
             <Link
               href="/signup"
               className="font-medium text-primary hover:underline"
             >
-              Signup
+              {t("signup")}
             </Link>
           </p>
         </CardContent>

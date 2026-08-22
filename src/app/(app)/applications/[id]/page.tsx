@@ -2,6 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Square } from "lucide-react";
+import { getTranslations, getLocale } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +16,8 @@ import {
 } from "@/lib/checklists";
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
 import { DOCUMENT_REVIEW_STATUS_META } from "@/lib/document-review-status";
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 import { UploadControl } from "@/components/checklist/upload-control";
 import { SubmitApplicationButton } from "@/components/checklist/submit-application-button";
 import { DeleteDocumentControl } from "@/components/checklist/delete-document-control";
@@ -81,6 +84,10 @@ export default async function ApplicationPage({
   const status = APPLICATION_STATUS_META[application.status];
   const canUpload = canUploadInStatus(application.status);
 
+  const t = await getTranslations("Checklist");
+  const common = await getTranslations("Common");
+  const locale = (await getLocale()) as Locale;
+
   return (
     <div className="mx-auto w-full max-w-xl">
       <Link
@@ -88,37 +95,34 @@ export default async function ApplicationPage({
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" />
-        Back to dashboard
+        {common("backToDashboard")}
       </Link>
 
       <div className="mt-6 flex flex-col gap-6 rounded-xl border border-border bg-card p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium text-primary">
-              {category.labelEn}
+              {pick(locale, category.labelEn, category.labelAr)}
             </p>
             <h1 className="text-xl font-semibold text-card-foreground">
-              Your document checklist
+              {t("title")}
             </h1>
           </div>
 
           <span
             className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
           >
-            {status.labelEn}
+            {pick(locale, status.labelEn, status.labelAr)}
           </span>
         </div>
 
-        <ChecklistProgressBar
-          uploaded={progress.uploaded}
-          total={progress.total}
-        />
+        <ChecklistProgressBar uploaded={progress.uploaded} total={progress.total} />
 
         {!canUpload && (
           <div className="rounded-lg border border-dashed border-border bg-muted/50 p-3 text-sm text-muted-foreground">
             {application.status === "PENDING_REVIEW"
-              ? "Your application is being reviewed. Documents are locked until a decision is made."
-              : "This application has been approved. Documents are locked."}
+              ? t("lockedReview")
+              : t("lockedApproved")}
           </div>
         )}
 
@@ -130,6 +134,7 @@ export default async function ApplicationPage({
               requirement={requirement}
               document={documentsByCode.get(requirement.code)}
               canUpload={canUpload}
+              locale={locale}
             />
           ))}
         </ul>
@@ -147,7 +152,7 @@ export default async function ApplicationPage({
             href={`/applications/${application.id}/wizard?step=${STEP_IDENTITY}`}
             className="text-center text-sm text-primary underline-offset-4 hover:underline"
           >
-            Edit your answers
+            {t("editAnswers")}
           </Link>
         )}
 
@@ -164,7 +169,7 @@ export default async function ApplicationPage({
   );
 }
 
-function ChecklistProgressBar({
+async function ChecklistProgressBar({
   uploaded,
   total,
 }: {
@@ -172,12 +177,12 @@ function ChecklistProgressBar({
   total: number;
 }) {
   const pct = total === 0 ? 0 : Math.round((uploaded / total) * 100);
+  const t = await getTranslations("Checklist");
+  const label = t("uploadedOf", { uploaded, total });
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        {uploaded} of {total} required documents uploaded
-      </p>
+      <p className="text-sm text-muted-foreground">{label}</p>
 
       <div
         className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
@@ -185,7 +190,7 @@ function ChecklistProgressBar({
         aria-valuenow={uploaded}
         aria-valuemin={0}
         aria-valuemax={total}
-        aria-label={`${uploaded} of ${total} required documents uploaded`}
+        aria-label={label}
       >
         <div
           className="h-full rounded-full bg-primary transition-all"
@@ -196,18 +201,21 @@ function ChecklistProgressBar({
   );
 }
 
-function RequirementRow({
+async function RequirementRow({
   applicationId,
   requirement,
   document,
   canUpload,
+  locale,
 }: {
   applicationId: string;
   requirement: Requirement;
   document: UploadedDocument | undefined;
   canUpload: boolean;
+  locale: Locale;
 }) {
   const uploaded = Boolean(document);
+  const t = await getTranslations("Checklist");
 
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border p-3">
@@ -229,13 +237,7 @@ function RequirementRow({
 
         <div className="flex-1">
           <span className="block text-sm text-card-foreground">
-            {requirement.labelEn}
-          </span>
-          {/* dir="rtl" isolates just this span's shaping/punctuation — the
-              page itself stays LTR until Phase 7 adds real language
-              switching. This is a bilingual label, not a translated page. */}
-          <span dir="rtl" className="block text-sm text-muted-foreground">
-            {requirement.labelAr}
+            {pick(locale, requirement.labelEn, requirement.labelAr)}
           </span>
           {document && (
             <div className="flex items-center gap-2">
@@ -254,7 +256,7 @@ function RequirementRow({
 
         {!requirement.required && (
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            Optional
+            {t("optional")}
           </span>
         )}
 
@@ -264,14 +266,20 @@ function RequirementRow({
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${DOCUMENT_REVIEW_STATUS_META[document.reviewStatus].className}`}
           >
-            {DOCUMENT_REVIEW_STATUS_META[document.reviewStatus].labelEn}
+            {pick(
+              locale,
+              DOCUMENT_REVIEW_STATUS_META[document.reviewStatus].labelEn,
+              DOCUMENT_REVIEW_STATUS_META[document.reviewStatus].labelAr,
+            )}
           </span>
         )}
       </div>
 
       {document?.adminNote && (
         <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Note from Masar: </span>
+          <span className="font-medium text-foreground">
+            {t("noteFromMasar")}{" "}
+          </span>
           {document.adminNote}
         </p>
       )}
@@ -285,7 +293,7 @@ function RequirementRow({
           key={document?.fileName ?? "empty"}
           applicationId={applicationId}
           requirementCode={requirement.code}
-          label={uploaded ? "Replace" : "Upload"}
+          isReplace={uploaded}
         />
       )}
     </li>

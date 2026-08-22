@@ -1,25 +1,13 @@
 import Link from "next/link";
 import { headers } from "next/headers";
+import { getTranslations, getLocale } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { CATEGORIES } from "@/lib/categories";
 import { CategoryCard } from "@/components/category-card";
 import { Button } from "@/components/ui/button";
-
-const STEPS = [
-  {
-    title: "Choose your category",
-    body: "Study, Chancenkarte, Medical (D16) or Ausbildung — pick the one that matches your plan.",
-  },
-  {
-    title: "Answer a few questions",
-    body: "A short form, two steps. It takes about two minutes on a phone.",
-  },
-  {
-    title: "Upload your documents",
-    body: "You get a personalised checklist. Masar reviews each file and tells you what is missing.",
-  },
-] as const;
+import { LocaleSwitcher } from "@/components/locale-switcher";
+import type { Locale } from "@/i18n/locale";
 
 export default async function HomePage() {
   // Read the session, but do NOT gate on it. This page is deliberately outside
@@ -28,10 +16,19 @@ export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() });
   const isSignedIn = Boolean(session?.user);
 
+  const t = await getTranslations("Home");
+  const locale = (await getLocale()) as Locale;
+
   const hrefFor = (value: string) =>
     isSignedIn
       ? `/applications/new?category=${value}`
       : `/signup?category=${value}`;
+
+  const steps = [
+    { title: t("step1Title"), body: t("step1Body") },
+    { title: t("step2Title"), body: t("step2Body") },
+    { title: t("step3Title"), body: t("step3Body") },
+  ];
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
@@ -42,13 +39,14 @@ export default async function HomePage() {
           </Link>
 
           <nav className="flex items-center gap-2">
+            <LocaleSwitcher />
             {isSignedIn ? (
               <Button
                 size="sm"
                 nativeButton={false}
                 render={<Link href="/dashboard" />}
               >
-                Go to dashboard
+                {t("goToDashboard")}
               </Button>
             ) : (
               <>
@@ -58,14 +56,14 @@ export default async function HomePage() {
                   nativeButton={false}
                   render={<Link href="/login" />}
                 >
-                  Log in
+                  {t("logIn")}
                 </Button>
                 <Button
                   size="sm"
                   nativeButton={false}
                   render={<Link href="/signup" />}
                 >
-                  Create account
+                  {t("createAccount")}
                 </Button>
               </>
             )}
@@ -77,12 +75,10 @@ export default async function HomePage() {
         {/* Hero */}
         <section className="mx-auto w-full max-w-5xl px-4 py-14 text-start sm:py-20">
           <h1 className="max-w-2xl text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Your German visa documents, in one place.
+            {t("heroTitle")}
           </h1>
           <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">
-            Masar Center guides you through the paperwork: a checklist built for
-            your case, a place to upload every document, and a review from our
-            team before anything reaches the embassy.
+            {t("heroBody")}
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
@@ -92,7 +88,7 @@ export default async function HomePage() {
                 nativeButton={false}
                 render={<Link href="/dashboard" />}
               >
-                Go to dashboard
+                {t("goToDashboard")}
               </Button>
             ) : (
               <>
@@ -101,7 +97,7 @@ export default async function HomePage() {
                   nativeButton={false}
                   render={<Link href="/signup" />}
                 >
-                  Create account
+                  {t("createAccount")}
                 </Button>
                 <Button
                   size="lg"
@@ -109,7 +105,7 @@ export default async function HomePage() {
                   nativeButton={false}
                   render={<Link href="/login" />}
                 >
-                  Log in
+                  {t("logIn")}
                 </Button>
               </>
             )}
@@ -119,10 +115,10 @@ export default async function HomePage() {
         {/* Category cards */}
         <section className="mx-auto w-full max-w-5xl px-4 pb-14 sm:pb-20">
           <h2 className="text-xl font-semibold text-foreground">
-            Choose your category
+            {t("chooseCategory")}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Each one has its own document checklist.
+            {t("chooseCategoryBody")}
           </p>
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -131,6 +127,7 @@ export default async function HomePage() {
                 key={category.value}
                 category={category}
                 href={hrefFor(category.value)}
+                locale={locale}
               />
             ))}
           </div>
@@ -140,11 +137,11 @@ export default async function HomePage() {
         <section className="border-t border-border bg-muted/40">
           <div className="mx-auto w-full max-w-5xl px-4 py-14 sm:py-20">
             <h2 className="text-xl font-semibold text-foreground">
-              How it works
+              {t("howItWorks")}
             </h2>
 
             <ol className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-3">
-              {STEPS.map((step, index) => (
+              {steps.map((step, index) => (
                 <li key={step.title} className="flex flex-col gap-2 text-start">
                   <span className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                     {index + 1}
@@ -162,14 +159,14 @@ export default async function HomePage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Masar Center</p>
+          <p>{t("footerRights", { year: new Date().getFullYear() })}</p>
           <nav className="flex flex-wrap gap-4">
             {/* TODO: real pages. An Impressum is a legal expectation for a company registered in Germany. */}
             <Link href="/impressum" className="hover:text-foreground">
-              Impressum
+              {t("impressum")}
             </Link>
             <Link href="/datenschutz" className="hover:text-foreground">
-              Privacy
+              {t("privacy")}
             </Link>
             <a
               href="https://masar-center.de"

@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { useTranslations } from "next-intl";
 
 import {
   submitApplication,
@@ -13,9 +14,10 @@ const EMPTY_STATE: SubmitApplicationState = { error: null };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
+  const t = useTranslations("Checklist");
   return (
     <Button type="submit" className="w-full" disabled={pending}>
-      {pending ? "Submitting…" : "Submit application"}
+      {pending ? t("submitting") : t("submit")}
     </Button>
   );
 }

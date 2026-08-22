@@ -3,18 +3,22 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { useTranslations } from "next-intl";
 
 import { saveQuestionStep } from "@/lib/actions/wizard";
 import { EMPTY_WIZARD_STATE, STEP_IDENTITY } from "@/lib/wizard";
 import { Button } from "@/components/ui/button";
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 
-type Option = { readonly value: string; readonly labelEn: string };
+type Option = { readonly value: string; readonly labelEn: string; readonly labelAr: string };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
+  const t = useTranslations("Wizard");
   return (
     <Button type="submit" size="lg" disabled={pending}>
-      {pending ? "Saving…" : "Save & finish"}
+      {pending ? t("saving") : t("saveAndFinish")}
     </Button>
   );
 }
@@ -25,13 +29,16 @@ export function QuestionStep({
   hint,
   options,
   defaultValue,
+  locale,
 }: {
   applicationId: string;
   legend: string;
   hint?: string;
   options: readonly Option[];
   defaultValue?: string;
+  locale: Locale;
 }) {
+  const t = useTranslations("Wizard");
   const [state, formAction] = useActionState(
     saveQuestionStep,
     EMPTY_WIZARD_STATE,
@@ -72,7 +79,7 @@ export function QuestionStep({
                 className="size-4 accent-primary"
               />
               <span className="text-sm text-card-foreground">
-                {option.labelEn}
+                {pick(locale, option.labelEn, option.labelAr)}
               </span>
             </label>
           ))}
@@ -97,7 +104,7 @@ export function QuestionStep({
             />
           }
         >
-          Back
+          {t("back")}
         </Button>
       </div>
     </form>

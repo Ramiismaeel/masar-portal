@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -25,29 +26,22 @@ export default async function VerifyEmailPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  const t = await getTranslations("Auth.VerifyEmail");
 
   if (error === "TOKEN_EXPIRED") {
     return (
-      <VerifyEmailCard title="This link has expired">
-        <p className="text-sm text-muted-foreground">
-          Verification links are valid for 7 days. Log in with your email and
-          password, then use the &quot;Resend email&quot; button to get a new
-          one.
-        </p>
-        <LoginLink />
+      <VerifyEmailCard title={t("expiredTitle")}>
+        <p className="text-sm text-muted-foreground">{t("expiredBody")}</p>
+        <LoginLink label={t("goToLogin")} />
       </VerifyEmailCard>
     );
   }
 
   if (error === "INVALID_TOKEN") {
     return (
-      <VerifyEmailCard title="This link is invalid">
-        <p className="text-sm text-muted-foreground">
-          This verification link is malformed or has already been used. Log
-          in and use the &quot;Resend email&quot; button if you still need to
-          verify.
-        </p>
-        <LoginLink />
+      <VerifyEmailCard title={t("invalidTitle")}>
+        <p className="text-sm text-muted-foreground">{t("invalidBody")}</p>
+        <LoginLink label={t("goToLogin")} />
       </VerifyEmailCard>
     );
   }
@@ -63,11 +57,9 @@ export default async function VerifyEmailPage({
   }
 
   return (
-    <VerifyEmailCard title="Email verified">
-      <p className="text-sm text-muted-foreground">
-        Your email address has been verified. Please sign in to continue.
-      </p>
-      <LoginLink />
+    <VerifyEmailCard title={t("verifiedTitle")}>
+      <p className="text-sm text-muted-foreground">{t("verifiedBody")}</p>
+      <LoginLink label={t("goToLogin")} />
     </VerifyEmailCard>
   );
 }
@@ -89,10 +81,10 @@ function VerifyEmailCard({
   );
 }
 
-function LoginLink() {
+function LoginLink({ label }: { label: string }) {
   return (
     <Button className="w-full" nativeButton={false} render={<Link href="/login" />}>
-      Go to login
+      {label}
     </Button>
   );
 }

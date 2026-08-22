@@ -2,6 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { getTranslations, getLocale } from "next-intl/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +16,8 @@ import {
   parseAnswers,
   totalSteps,
 } from "@/lib/wizard";
+import { pick } from "@/i18n/pick";
+import type { Locale } from "@/i18n/locale";
 import { WizardProgress } from "@/components/wizard/wizard-progress";
 import { IdentityStep } from "@/components/wizard/identity-step";
 import { QuestionStep } from "@/components/wizard/question-step";
@@ -84,6 +87,8 @@ export default async function WizardPage({
   );
 
   const answers = parseAnswers(application.data);
+  const t = await getTranslations("Wizard");
+  const locale = (await getLocale()) as Locale;
 
   return (
     <div className="mx-auto w-full max-w-xl">
@@ -92,19 +97,21 @@ export default async function WizardPage({
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4 rtl:-scale-x-100" aria-hidden="true" />
-        Save and continue later
+        {t("saveAndContinueLater")}
       </Link>
 
       <div className="mt-6 flex flex-col gap-6 rounded-xl border border-border bg-card p-6">
         <div className="flex flex-col gap-4">
-          <p className="text-sm font-medium text-primary">{category.labelEn}</p>
+          <p className="text-sm font-medium text-primary">
+            {pick(locale, category.labelEn, category.labelAr)}
+          </p>
           <WizardProgress step={step} total={total} />
         </div>
 
         {step === STEP_IDENTITY && (
           <div className="flex flex-col gap-4">
             <h1 className="text-xl font-semibold text-card-foreground">
-              Your details
+              {t("yourDetails")}
             </h1>
             <IdentityStep
               applicationId={application.id}
@@ -121,26 +128,28 @@ export default async function WizardPage({
         {step === STEP_QUESTION && hasQuestionStep(category.value) && (
           <div className="flex flex-col gap-4">
             <h1 className="text-xl font-semibold text-card-foreground">
-              One more question
+              {t("oneMoreQuestion")}
             </h1>
 
             {category.value === "STUDENT" && (
               <QuestionStep
                 applicationId={application.id}
-                legend="Is your programme taught in German or English?"
-                hint="If it is taught in English, you will also need an English language certificate."
+                legend={t("studentLegend")}
+                hint={t("studentHint")}
                 options={INSTRUCTION_LANGUAGES}
                 defaultValue={answers.instructionLanguage}
+                locale={locale}
               />
             )}
 
             {category.value === "MEDICAL" && (
               <QuestionStep
                 applicationId={application.id}
-                legend="What is your profession?"
-                hint="Doctors are asked for one extra document (بيان معاودة)."
+                legend={t("medicalLegend")}
+                hint={t("medicalHint")}
                 options={MEDICAL_PROFESSIONS}
                 defaultValue={answers.medicalProfession}
+                locale={locale}
               />
             )}
           </div>

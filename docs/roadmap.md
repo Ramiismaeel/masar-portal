@@ -67,7 +67,8 @@ Any page added under `(app)` is protected by construction.
 - [x] **Phase 6** Admin dashboard: role-gated `/admin`, per-document review (approve/reject/
       request-changes + note), application-level decision, notification email, resubmission
       loop. See "Admin dashboard" below.
-- [ ] **Phase 7** i18n (EN/AR) & PWA.
+- [x] **Phase 7** EN/AR language switch, RTL, translated applicant-facing UI (see "i18n" below),
+      plus installable PWA — manifest, service worker, offline fallback (see "PWA" below).
 - [ ] **Phase 8** GDPR (delete account, retention), audit log, bulk ZIP export.
 - [ ] **Phase 9** API docs for the mobile app.
 
@@ -88,9 +89,167 @@ Any page added under `(app)` is protected by construction.
    flag every document NEEDS_REVISION and still click Approve. No software gate stops a
    contradictory decision; it's trusted admin judgement. Revisit if that turns out to be a
    problem in practice.
+4. **Server Action error strings are still English-only** — see "i18n" below, "What's NOT
+   translated."
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
+
+## i18n (Phase 7, Aug 2026)
+- **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
+  (`src/i18n/locale.ts`'s `LOCALE_COOKIE`), read server-side in `src/i18n/request.ts`. Same URL
+  in both languages — this was the deciding constraint: routed locales (`/en/...` vs `/ar/...`)
+  force a real navigation on switch, and the roadmap already required *"switching language must
+  not lose form state."* A cookie-based, no-prefix setup was the only option that satisfied that
+  outright rather than needing extra engineering to work around it.
+- **Switching mechanism, and a bug caught live while testing it**: `setLocale` (
+  `src/lib/actions/locale.ts`) sets the cookie and best-effort mirrors it to `User.locale` when
+  signed in — but does **not** call `revalidatePath`. The first version did
+  (`revalidatePath("/", "layout")`), and confirmed live in the browser that it wiped an
+  in-progress, un-submitted wizard field the instant the language was switched — busting the
+  *root* layout's cache forces a much more aggressive re-render than revalidating a leaf path
+  does, aggressive enough to recreate the DOM node under an uncontrolled `<input>` rather than
+  patch it. Fixed by moving to the pattern `next-intl` itself documents for this exact
+  cookie-based setup: `LocaleSwitcher` (client) calls the action, then `router.refresh()` —
+  re-confirmed live afterward that a typed value now survives the switch.
+- **`LocaleSwitcher`** (`src/components/locale-switcher.tsx`) shows the language you'd switch
+  **to**, not the current one — a single one-tap toggle, not a select. Placed in the `(auth)`
+  layout, the `(app)` layout, and the home page header — i.e. every applicant-facing surface.
+  Deliberately **not** in the admin layout (see below).
+- **Two kinds of bilingual content, two different mechanisms — don't conflate them**:
+  - UI copy (labels, buttons, headings, static strings) → `next-intl` messages,
+    `messages/en.json` / `messages/ar.json`, via `useTranslations`/`getTranslations`. Both files
+    are kept in lockstep on purpose — verified programmatically (walked both JSON trees, diffed
+    the key sets) that all 144 keys match exactly; a missing key throws at render time for
+    whichever locale is missing it.
+  - Bilingual **domain data** with a stable identity (`checklists.ts` requirements,
+    `categories.ts`, `application-status.ts`, `document-review-status.ts`) → already had
+    `labelEn`/`labelAr` fields sitting there since Phase 4, now actually consumed via
+    `pick(locale, en, ar)` (`src/i18n/pick.ts`) instead of sitting unused. This is *not* the same
+    mechanism as `next-intl` — it's plain data selection, no ICU formatting needed.
+  - The checklist page used to show **both** `labelEn` and `labelAr` stacked on every row
+    (a deliberate stopgap from Phase 4/5, before a real switch existed). Now that one does, that
+    page shows only the active locale's label, same as everywhere else — the permanently-bilingual
+    display was retired as part of this phase, not left in place alongside the new switch.
+- **Arabic plurals are real, not a formality**: `documentsUploaded` in `ApplicationCard` uses
+  ICU `{count, plural, one {…} two {…} few {…} other {…}}` — Arabic's CLDR plural categories
+  (zero/one/two/few 3–10/many 11–99/other) are genuinely different from English's one/other, and
+  confirmed live that 5 documents renders "few" grammar (`تم رفع 5 مستندات`) correctly, not a
+  bolted-on `s`.
+  Numbers themselves stay Western digits everywhere on purpose (dates, counts) —
+  `numberingSystem: "latn"` pinned explicitly in `ApplicationCard`'s `Intl.DateTimeFormat` — for
+  consistency with phone/passport-number fields, which are `dir="ltr"` and Latin-only regardless
+  of UI language.
+- **Admin (`/admin`) is deliberately English-only and LTR always**, regardless of the visitor's
+  own locale preference — it's a staff-only internal tool, out of scope for this pass. Getting
+  this right took two separate fixes, both caught live in the browser, not anticipated in
+  advance:
+  1. `dir` is set once on `<html>` from the locale cookie in the root layout — so with an Arabic
+     preference active, `/admin` initially rendered English text inside an RTL-mirrored layout
+     (badges and dates on the wrong side for the language actually on screen). Fixed with an
+     explicit `dir="ltr"` on `admin/layout.tsx`'s wrapper, overriding the inherited root value.
+  2. Shared components used inside admin (`SignOutButton`) call `useTranslations()` themselves,
+     and inherited the root `NextIntlClientProvider`'s Arabic messages regardless of the `dir`
+     fix — "Sign out" was rendering as "تسجيل الخروج" inside an English admin page. Fixed by
+     wrapping `admin/layout.tsx`'s whole tree in its own nested `NextIntlClientProvider` pinned
+     to `locale="en"` with the English catalog imported directly — nested providers override the
+     outer one for everything under them.
+- **What's NOT translated, on purpose, this pass**: Server Action-returned error strings (e.g.
+  `createApplication`'s `"Please choose a valid category."`, the wizard's field-validation
+  messages) and Better Auth's own `error.message` values. Only the client-side static copy —
+  labels, headings, buttons, placeholders, and each component's own validation fallback text —
+  goes through `next-intl`. Translating action-returned errors would mean threading locale
+  through every Server Action and is a real follow-up, not done here to keep this pass's
+  changeset to UI copy and data-driven labels.
+- **Verified live in the browser, not just typechecked**: home page, signup redirect→dashboard,
+  full dashboard, and the checklist page (including per-document review-status badges and admin
+  notes picking the right label) all confirmed correct in both languages, RTL mirroring
+  (flex order, icon flipping via the existing `rtl:-scale-x-100` convention, card grid order)
+  correct without any additional CSS work beyond what CLAUDE.md's logical-properties rule
+  already required, and the admin LTR/English-lock confirmed to not leak back into the
+  applicant-facing pages when switching between the two sections.
+
+## PWA (Phase 7, Aug 2026)
+- **`@serwist/turbopack`, not `@serwist/next` — found live, not anticipated.** The standard
+  Serwist-for-Next.js setup (`withSerwistInit` from `@serwist/next`, a webpack `InjectManifest`
+  plugin writing a physical `public/sw.js` at build time) is the documented default everywhere,
+  and it's what got built first here. It silently produced **nothing** — `next build` completed
+  with only an easy-to-miss warning, no `public/sw.js` ever appeared, no error. Cause: Next.js 16
+  uses Turbopack for `next build` here, not just `next dev`, and `@serwist/next`'s plugin is
+  webpack-only — it doesn't run under Turbopack at all. Since this project's bundler is Turbopack
+  throughout (never opted into webpack for anything else), switching the *build* to webpack just
+  for the service worker was the wrong direction. Fixed by moving to `@serwist/turbopack`
+  instead, which takes a genuinely different mechanism (see below) — confirmed live afterward
+  that this one actually emits `public`-equivalent output (45 precache entries, ~1 MB) and the
+  browser registers it.
+- **Turbopack path serves the SW from a Route Handler, not a static file.**
+  `src/app/[path]/route.ts` exports `{ dynamic, dynamicParams, revalidate, generateStaticParams,
+  GET }` from `createSerwistRoute({ swSrc: "src/app/sw.ts" })` — this bundles `sw.ts` with
+  esbuild and statically generates `/sw.js` and `/sw.js.map` as SSG routes
+  (`generateStaticParams` + `dynamicParams: false`, so nothing else can hit `[path]`). Needed
+  `esbuild` installed as a **direct** dependency, confirmed live — `@serwist/turbopack` imports
+  it dynamically at request time, and Next's `serverExternalPackages` (which
+  `@serwist/turbopack`'s own `withSerwist` sets) means it's resolved from this project's own
+  `node_modules`, not bundled in, so it has to actually be there.
+  `createSerwistRoute`'s `useNativeEsbuild` option **must be pinned explicitly** — its default is
+  platform-dependent (`true` on Windows, `false` everywhere else), which is exactly the kind of
+  default that works on one machine and breaks in CI. Found live: worked locally (Windows,
+  native `esbuild`), then the very next Vercel deploy (Linux) failed with `Cannot find package
+  'esbuild-wasm'` — the default silently switched code paths between environments. Fixed by
+  passing `useNativeEsbuild: true` explicitly in `src/app/[path]/route.ts`, so only `esbuild`
+  (already installed) is ever needed anywhere; `esbuild`'s own postinstall resolves the correct
+  platform binary via `optionalDependencies`, so pinning to native works cross-platform without
+  needing `esbuild-wasm` as a second dependency.
+- **No auto-registration on this path.** `@serwist/next`'s plugin injects a registration script
+  for you (`register: true` by default); `@serwist/turbopack` doesn't attempt this at all — it
+  only builds and serves the file. `src/components/register-service-worker.tsx` does it by hand
+  with the plain `navigator.serviceWorker.register()` API in a `useEffect`, gated to
+  `NODE_ENV === "production"` (registering in dev would fight Turbopack's own hot-reload with a
+  second caching layer). Confirmed live: `navigator.serviceWorker.getRegistration()` returns an
+  `activated` registration scoped to the whole origin after a production build + `next start`.
+- **`defaultCache` (from `@serwist/next/worker` — that half of the package is still used, just
+  not its webpack plugin) does the actual runtime-caching work**, not hand-picked rules — it's
+  already Next.js-App-Router-aware: NetworkFirst for RSC payloads/HTML navigations and `/api/*`
+  (so nothing authenticated or personal is ever served stale while a real connection exists — the
+  cache is strictly an offline fallback, never a substitute for a live request), CacheFirst/
+  StaleWhileRevalidate for static build assets and fonts, and an explicit carve-out for
+  `/api/auth/*` so the auth callback flow isn't intercepted. Given this app handles passports and
+  medical reports, "never silently serve stale authenticated content" was the property that
+  mattered most, and it's already how this behaves.
+- **Offline fallback is a static file in `public/`, not a Next.js page — on purpose.** Every page
+  in this app inherits the root layout's locale read (`cookies()`, a dynamic API), which makes
+  the entire render tree dynamic and un-prerenderable. A fallback that must be available *before*
+  the network goes down can't depend on a request-time cookie read — so it can't be a normal
+  page under any layout, no matter which one. `public/offline.html` is deliberately outside the
+  App Router entirely: plain inline-styled HTML, both languages shown together (the one
+  intentional exception to "one language on screen at a time" — there's no locale to key off of
+  here). Wired via `sw.ts`'s `fallbacks.entries`, matched on `request.destination === "document"`
+  so it only intercepts page navigations, not asset/API requests. Confirmed live via the Cache
+  Storage API (`caches.open(...).keys()`) that `/offline.html` is actually in the precache, not
+  just referenced.
+- **Icons: real mark, sourced from `https://masar-center.de/favicon-512x512.png`** — a proper
+  512×512 circular "M" mark (blue gradient, transparent corners), not the email wordmark used
+  for the first pass. Generated with `sharp`, installed and run from a scratch directory rather
+  than added to this project's own `package.json` — it's a native binary dependency needed for a
+  one-time asset-generation script, not anything the running app uses. "any"-purpose icons
+  (192/512px) are the source resized as-is, transparent corners intact — it's already a
+  self-contained mark, unlike the wordmark, which needed a background composited in to look
+  intentional. "Maskable" variants (Android's adaptive-icon safe zone) and the Apple touch icon
+  (180px, opaque — iOS mishandles transparency) fill the full square with a white background
+  and the mark sized to ~70–82% of the canvas. `src/app/icon.png` / `src/app/apple-icon.png` use
+  Next's file-based favicon convention — auto-linked, no manual `<link>` tags.
+- `src/app/manifest.ts` uses Next's file-based manifest convention (auto-served at
+  `/manifest.webmanifest`, auto-linked from every page) rather than a static `public/manifest.json`.
+- **`sw.ts` needs its own tsconfig** (`tsconfig.worker.json`, `lib: ["esnext", "webworker"]`) —
+  the `WorkerGlobalScope`/`ServiceWorkerGlobalScope` types aren't available under the main
+  `tsconfig.json`'s `dom` lib, and the two libs conflict if combined in one config. `sw.ts` is
+  excluded from the main `tsconfig.json` and checked separately
+  (`npx tsc --noEmit -p tsconfig.worker.json`) — remember to run both when touching service-worker
+  code, the routine `npx tsc --noEmit -p tsconfig.json` alone won't catch a `sw.ts` type error.
+- Verified live end-to-end against a real production build (`next build` + `next start`), not
+  dev mode: service worker registers and activates, manifest/icons/theme-color all correctly
+  auto-linked in `<head>`, `/offline.html` precached, `/manifest.webmanifest` serves the right
+  JSON, `/sw.js` serves real compiled content with the precache manifest inside it.
 
 ## Admin dashboard (Phase 6, Aug 2026)
 - **Access is a manual DB flag, not a flow.** `role` is a real `Role` enum column (`USER` |
