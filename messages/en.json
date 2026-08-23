@@ -11,7 +11,9 @@
     "ar": "Arabic"
   },
   "ThemeToggle": {
-    "label": "Toggle dark mode"
+    "label": "Toggle dark mode",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode"
   },
   "Common": {
     "backToDashboard": "Back to dashboard",
@@ -39,7 +41,9 @@
   "AppLayout": {
     "admin": "Admin",
     "myDashboard": "My dashboard",
-    "verifyBanner": "Verify your email to submit an application. We sent a link to <b>{email}</b>."
+    "verifyBanner": "Verify your email to submit an application. We sent a link to <b>{email}</b>.",
+    "menu": "Menu",
+    "close": "Close"
   },
   "Home": {
     "goToDashboard": "Go to dashboard",

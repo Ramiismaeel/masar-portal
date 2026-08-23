@@ -1,12 +1,24 @@
 "use client";
 
+import type { ComponentType } from "react";
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 
 import { setLocale } from "@/lib/actions/locale";
 import { Button } from "@/components/ui/button";
+import { GbFlag, SyFlag } from "@/components/flag-icon";
 import type { Locale } from "@/i18n/locale";
+
+// Same flag pairing masar-center.de uses for these two languages (checked
+// live: its own mobile menu shows a UK flag for English and this Syria
+// tricolour for Arabic) — fitting here too, since the roadmap's own "who
+// this app is for" is explicitly applicants mostly located in Syria. Real
+// SVGs, not emoji — see flag-icon.tsx for why.
+const FLAGS: Record<Locale, ComponentType<{ className?: string }>> = {
+  en: GbFlag,
+  ar: SyFlag,
+};
 
 /** Shows the language you'd switch TO, not the current one — a one-tap toggle. */
 export function LocaleSwitcher({
@@ -28,6 +40,7 @@ export function LocaleSwitcher({
   const [isPending, startTransition] = useTransition();
 
   const next: Locale = locale === "en" ? "ar" : "en";
+  const Flag = FLAGS[next];
 
   const handleClick = () => {
     startTransition(async () => {
@@ -52,6 +65,7 @@ export function LocaleSwitcher({
       onClick={handleClick}
       aria-label={t("label")}
     >
+      <Flag className="size-4 shrink-0 rounded-[2px]" />
       {t(next)}
     </Button>
   );

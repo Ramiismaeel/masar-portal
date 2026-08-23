@@ -9,8 +9,11 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ResendEmailButton } from "@/components/auth/resend-email-button";
 import { Button } from "@/components/ui/button";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { LegalFooter } from "@/components/legal-footer";
+import { AppMobileMenu } from "@/components/app-mobile-menu";
 import type { Locale } from "@/i18n/locale";
+import { getTheme } from "@/lib/theme";
 
 // Everything under (app) is a signed-in user's own applications and
 // documents — no reason for it to be crawled or indexed, and every reason
@@ -35,6 +38,8 @@ export default async function DashboardLayout({
 
   const t = await getTranslations("AppLayout");
   const locale = (await getLocale()) as Locale;
+  const theme = await getTheme();
+  const isAdmin = session.user.role === "ADMIN";
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -47,22 +52,32 @@ export default async function DashboardLayout({
             </span>
           </Link>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Language stays directly in the header on every breakpoint —
+                a one-tap toggle used far more than what's below, so it
+                shouldn't be a tap deeper than everything else. */}
             <LocaleSwitcher />
-            {session.user.role === "ADMIN" && (
-              <Button
-                variant="outline"
-                size="sm"
-                nativeButton={false}
-                render={<Link href="/admin" />}
-              >
-                {t("admin")}
-              </Button>
-            )}
-            <span className="text-sm text-muted-foreground">
-              {session.user.name}
-            </span>
-            <SignOutButton />
+
+            {/* Desktop: the rest, inline — there's room. Mobile: these move
+                into AppMobileMenu's slide-out panel instead, since logo +
+                language + theme + admin + sign out in one unwrapped row was
+                genuinely too much for a phone width. */}
+            <div className="hidden items-center gap-4 sm:flex">
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  render={<Link href="/admin" />}
+                >
+                  {t("admin")}
+                </Button>
+              )}
+              <ThemeToggle theme={theme} />
+              <SignOutButton />
+            </div>
+
+            <AppMobileMenu isAdmin={isAdmin} theme={theme} />
           </div>
         </div>
       </header>
