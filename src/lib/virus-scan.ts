@@ -12,7 +12,14 @@
 export type ScanResult =
   | { status: "clean" }
   | { status: "infected"; viruses: string[] }
-  | { status: "error"; message: string };
+  /**
+   * `retryable` is the difference between "the service hiccuped" and "this
+   * file will never scan". Collapsing the two is what made a hard 400 —
+   * Cloudmersive refusing an over-sized file on the free tier — surface to
+   * applicants as "please try again shortly", advice that could never work
+   * no matter how many times they followed it.
+   */
+  | { status: "error"; retryable: boolean; message: string };
 
 type CloudmersiveScanResponse = {
   CleanResult: boolean;
@@ -39,12 +46,31 @@ export async function scanFileForViruses(
     });
   } catch (error) {
     console.error("[virus-scan] request failed:", error);
-    return { status: "error", message: "Could not reach the scanning service." };
+    return {
+      status: "error",
+      retryable: true,
+      message: "Could not reach the scanning service.",
+    };
   }
 
   if (!response.ok) {
-    console.error("[virus-scan] non-OK response:", response.status);
-    return { status: "error", message: "The scanning service returned an error." };
+    // Read the BODY, not just the status. Cloudmersive explains itself in
+    // plain text here ("Paid plan required: Input file was larger than the
+    // limit for the free tier"), and throwing that away is the single reason
+    // an obvious, self-describing failure looked like a mystery in the logs.
+    const body = await response.text().catch(() => "<unreadable>");
+    console.error(
+      `[virus-scan] non-OK response: ${response.status} ${response.statusText} — ${body.slice(0, 300)}`,
+    );
+
+    // 4xx means the request itself is unacceptable — too large, bad key, out
+    // of quota. Retrying sends the identical bytes and gets the identical
+    // answer. 5xx and transport failures are the ones worth retrying.
+    return {
+      status: "error",
+      retryable: response.status >= 500,
+      message: `The scanning service rejected the request (${response.status}).`,
+    };
   }
 
   const data = (await response.json()) as CloudmersiveScanResponse;

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/admin";
 import { sendEmail } from "@/lib/email";
 import { applicationDecisionEmail } from "@/lib/emails/application-decision";
+import { applicationReopenedEmail } from "@/lib/emails/application-reopened";
 import { findRequirement } from "@/lib/checklists";
 import { isCategoryValue } from "@/lib/categories";
 import { recordAudit } from "@/lib/audit";
@@ -191,6 +192,123 @@ export async function decideApplication(
       console.error("decideApplication: notification email failed", error);
     },
   );
+
+  revalidatePath(`/admin/applications/${application.id}`);
+  revalidatePath("/admin");
+  revalidatePath(`/applications/${application.id}`);
+  revalidatePath("/dashboard");
+
+  return { error: null };
+}
+
+const DECIDED_STATUSES = ["APPROVED", "REJECTED", "NEEDS_REVISION"] as const;
+
+export type ReopenApplicationState = { error: string | null };
+
+/**
+ * Sends an already-decided application back to PENDING_REVIEW.
+ *
+ * Fills a real gap: `decideApplication` only runs from PENDING_REVIEW, so
+ * before this existed a decision could never be changed. REJECTED and
+ * NEEDS_REVISION were at least recoverable — the applicant could resubmit —
+ * but APPROVED was a permanent dead end, because `canUploadInStatus` also
+ * excludes it, so *nothing in the app* could move an approved application.
+ * A mis-clicked Approve needed database surgery to undo.
+ *
+ * Deliberately does NOT reset per-document reviewStatus/adminNote. Those are
+ * still the admin's genuine feedback on specific files; wiping them would
+ * destroy real work to undo an unrelated click. `submittedAt` is likewise
+ * left alone — the application really was submitted then, and that timestamp
+ * is what the review queue orders by.
+ *
+ * Note the applicant still cannot upload after a reopen: PENDING_REVIEW is
+ * excluded from `canUploadInStatus`, which is correct — the application is
+ * back in the queue, not back in the applicant's hands. To hand it back, the
+ * admin decides NEEDS_REVISION from here.
+ */
+export async function reopenApplication(
+  _prev: ReopenApplicationState,
+  formData: FormData,
+): Promise<ReopenApplicationState> {
+  const session = await requireAdminSession();
+  if (!session) {
+    return { error: "Not authorised." };
+  }
+
+  const applicationId = formData.get("applicationId");
+  if (typeof applicationId !== "string") {
+    return { error: "Invalid request." };
+  }
+
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  const application = await prisma.application.findUnique({
+    where: { id: applicationId },
+    select: {
+      id: true,
+      status: true,
+      userId: true,
+      user: { select: { email: true, name: true } },
+    },
+  });
+
+  if (!application) {
+    return { error: "Application not found." };
+  }
+
+  if (!(DECIDED_STATUSES as readonly string[]).includes(application.status)) {
+    return {
+      error:
+        application.status === "PENDING_REVIEW"
+          ? "This application is already under review."
+          : "Only a decided application can be sent back for review.",
+    };
+  }
+
+  const wasApproved = application.status === "APPROVED";
+
+  // A reason is mandatory only when retracting an approval. That is the case
+  // where the applicant has already been told good news and may be acting on
+  // it, so "why" is owed to them — and to whoever reads the audit log later.
+  if (wasApproved && !reason) {
+    return {
+      error: "Explain why the approval is being withdrawn — the applicant is told.",
+    };
+  }
+
+  try {
+    await prisma.application.update({
+      where: { id: application.id },
+      data: { status: "PENDING_REVIEW" },
+    });
+  } catch (error) {
+    console.error("reopenApplication failed", error);
+    return { error: "Could not reopen the application. Please try again." };
+  }
+
+  await recordAudit({
+    action: "APPLICATION_REOPENED",
+    actorUserId: session.user.id,
+    subjectUserId: application.userId,
+    targetType: "application",
+    targetId: application.id,
+    // The previous status is the point of the entry — it records what was
+    // undone. `reason` is free text an admin typed, so only its presence is
+    // stored, keeping the log free of prose about a person.
+    metadata: { previousStatus: application.status, hasReason: Boolean(reason) },
+  });
+
+  // Same rule as decideApplication: a failed email must never undo a status
+  // change that already committed.
+  const { subject, html } = applicationReopenedEmail({
+    name: application.user.name,
+    wasApproved,
+    reason: reason || null,
+  });
+
+  await sendEmail({ to: application.user.email, subject, html }).catch((error) => {
+    console.error("reopenApplication: notification email failed", error);
+  });
 
   revalidatePath(`/admin/applications/${application.id}`);
   revalidatePath("/admin");

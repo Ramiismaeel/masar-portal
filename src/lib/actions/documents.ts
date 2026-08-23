@@ -7,12 +7,15 @@ import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/prisma";
 import { r2, R2_BUCKET } from "@/lib/r2";
 import { scanFileForViruses } from "@/lib/virus-scan";
+import { normalizeUpload } from "@/lib/normalize-upload";
+import { detectMimeType } from "@/lib/file-signatures";
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE_BYTES,
+  SCAN_MAX_BYTES,
   canUploadInStatus,
-  isAllowedMimeType,
 } from "@/lib/uploads";
+import type { ScanStatus } from "@/generated/prisma/client";
 import { findRequirement, checklistProgress } from "@/lib/checklists";
 import { parseAnswers } from "@/lib/wizard";
 import { loadOwnedApplication } from "@/lib/actions/wizard";
@@ -47,37 +50,97 @@ export async function uploadDocument(
   }
 
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    return { error: "File is too large — the limit is 10 MB." };
-  }
-
-  if (!isAllowedMimeType(file.type)) {
-    return { error: "Only PDF, JPG, or PNG files are accepted." };
+    // Derived from the constant, not typed out — the two drifting apart is a
+    // small bug that tells the user something false.
+    const limitMb = Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024));
+    return { error: `File is too large — the limit is ${limitMb} MB.` };
   }
 
   const bytes = Buffer.from(await file.arrayBuffer());
 
-  // Upload pipeline order (docs/roadmap.md): validate → scan → store. Nothing
-  // below this point runs unless the scan comes back clean.
-  const scan = await scanFileForViruses(bytes, file.name);
+  // The REAL type, read from the leading bytes. `file.type` is a string the
+  // client supplies and can set to anything, so trusting it meant a renamed
+  // executable sent as `Content-Type: image/png` passed validation.
+  const mimeType = detectMimeType(bytes);
+  if (!mimeType) {
+    return { error: "Only PDF, JPG, or PNG files are accepted." };
+  }
 
-  if (scan.status === "infected") {
-    console.warn("[uploadDocument] infected file rejected", {
-      applicationId: application.id,
-      requirementCode,
-      viruses: scan.viruses,
+  if (mimeType !== file.type) {
+    // Not an error — browsers guess Content-Type from the extension and get
+    // it wrong innocently all the time. Worth a line in the log, because the
+    // other explanation is someone probing the upload.
+    console.warn("[uploadDocument] declared type did not match content", {
+      declared: file.type,
+      detected: mimeType,
     });
+  }
+
+  // Upload pipeline order (docs/roadmap.md), now with a normalise step:
+  //   validate → normalize → scan → store
+  // Normalising persists nothing, so the rule that nothing unscanned reaches
+  // R2 is unchanged. Re-encoding an image strips anything that isn't pixels,
+  // and shrinks a phone photo from megabytes to a few hundred KB — which is
+  // what brings it under the scanner's size limit so it CAN be scanned.
+  const normalized = await normalizeUpload(bytes, mimeType);
+  if (!normalized.ok) {
     return {
-      error: "This file did not pass our security scan and was not uploaded.",
+      error: "This image could not be read. Please try a different file.",
     };
   }
+  const storedBytes = normalized.bytes;
+  // NOT `mimeType` — normalisation converts a photographic PNG to JPEG, since
+  // PNG is lossless and such a file would otherwise stay too large to scan.
+  // Everything downstream (extension, ContentType, the Document row) must
+  // describe what we actually stored.
+  const storedMimeType = normalized.mimeType;
 
-  if (scan.status === "error") {
-    return { error: "Could not scan the file right now. Please try again shortly." };
+  let scanStatus: ScanStatus;
+
+  if (storedBytes.length > SCAN_MAX_BYTES) {
+    // Cloudmersive's free tier refuses this outright, so calling it would
+    // just produce a guaranteed 400. Recorded honestly as SKIPPED rather
+    // than quietly stored as if it had been checked. In practice only large
+    // PDFs land here — images are always re-encoded well under the limit.
+    console.warn("[uploadDocument] file too large to scan, storing SKIPPED", {
+      applicationId: application.id,
+      requirementCode,
+      bytes: storedBytes.length,
+      limit: SCAN_MAX_BYTES,
+    });
+    scanStatus = "SKIPPED";
+  } else {
+    const scan = await scanFileForViruses(storedBytes, file.name);
+
+    if (scan.status === "infected") {
+      console.warn("[uploadDocument] infected file rejected", {
+        applicationId: application.id,
+        requirementCode,
+        viruses: scan.viruses,
+      });
+      return {
+        error: "This file did not pass our security scan and was not uploaded.",
+      };
+    }
+
+    if (scan.status === "error") {
+      // A file we chose to scan but couldn't is NOT stored. Only the
+      // known, deliberate too-large case above is allowed through unscanned;
+      // an unexplained scanner failure is not.
+      return {
+        error: scan.retryable
+          ? "Our security scan is temporarily unavailable. Please try again in a few minutes."
+          : "This file could not be security-checked and was not uploaded. Please contact us if this continues.",
+      };
+    }
+
+    scanStatus = "CLEAN";
   }
 
-  // Extension comes from the validated mime type, never from the client's
-  // filename — a renamed executable does not get to keep a .pdf extension.
-  const extension = ALLOWED_MIME_TYPES[file.type];
+  // Extension comes from the DETECTED mime type, never from the client's
+  // filename or its claimed Content-Type — a renamed executable does not get
+  // to keep a .pdf extension.
+  const extension = ALLOWED_MIME_TYPES[storedMimeType];
   const storageKey = `applications/${application.id}/${requirementCode}/${randomUUID()}.${extension}`;
 
   try {
@@ -85,8 +148,10 @@ export async function uploadDocument(
       new PutObjectCommand({
         Bucket: R2_BUCKET,
         Key: storageKey,
-        Body: bytes,
-        ContentType: file.type,
+        // The NORMALISED bytes — the ones that were scanned. Storing the
+        // originals here would mean serving admins a file nothing checked.
+        Body: storedBytes,
+        ContentType: storedMimeType,
       }),
     );
   } catch (error) {
@@ -119,17 +184,20 @@ export async function uploadDocument(
         requirementCode,
         fileName: file.name,
         storageKey,
-        mimeType: file.type,
-        sizeBytes: file.size,
-        scanStatus: "CLEAN",
+        mimeType: storedMimeType,
+        // Size of what was actually stored, not what was uploaded — after
+        // re-encoding these differ by an order of magnitude, and this column
+        // is what R2 storage accounting is read from.
+        sizeBytes: storedBytes.length,
+        scanStatus,
         reviewStatus: "PENDING",
       },
       update: {
         fileName: file.name,
         storageKey,
-        mimeType: file.type,
-        sizeBytes: file.size,
-        scanStatus: "CLEAN",
+        mimeType: storedMimeType,
+        sizeBytes: storedBytes.length,
+        scanStatus,
         // A replacement is a new file — any note or decision on the old one
         // no longer applies to what the admin is about to see.
         reviewStatus: "PENDING",
@@ -152,9 +220,17 @@ export async function uploadDocument(
   // until the replacement is confirmed safe.
   if (previous && previous.storageKey !== storageKey) {
     await r2
-      .send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: previous.storageKey }))
+      .send(
+        new DeleteObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: previous.storageKey,
+        }),
+      )
       .catch((error) => {
-        console.error("uploadDocument: failed to delete superseded object", error);
+        console.error(
+          "uploadDocument: failed to delete superseded object",
+          error,
+        );
       });
   }
 
@@ -220,7 +296,9 @@ export async function deleteDocument(
   // checklist is still correct; storage just holds an orphan until retried,
   // same trade-off as the superseded-object cleanup in uploadDocument above.
   await r2
-    .send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: document.storageKey }))
+    .send(
+      new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: document.storageKey }),
+    )
     .catch((error) => {
       console.error("deleteDocument: failed to delete R2 object", error);
     });

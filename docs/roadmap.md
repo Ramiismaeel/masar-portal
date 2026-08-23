@@ -86,8 +86,9 @@ Any page added under `(app)` is protected by construction.
       design pass.
 - [x] **Phase 11** GDPR follow-through — self-service delete account, audit log, admin bulk ZIP
       export, retention limits. All four shipped and verified live (see "Account deletion" and
-      "Audit log, export & retention" below). **One thing still needs Masar, not code**:
-      `DOCUMENT_RETENTION_DAYS` is a placeholder (180) and is a legal/business decision.
+      "Audit log, export & retention" below). `DOCUMENT_RETENTION_DAYS = 180` and `CRON_SECRET` in
+      Vercel both **confirmed 23 Aug 2026** — the nightly purge is live. Remaining follow-through is
+      the Datenschutz rewrite (§7 and §11), which is now factually wrong in both directions.
 - [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
 
 ## Immediate next steps
@@ -677,8 +678,13 @@ logging retrofitted onto them later.
   - Worth recording: the control-character class was **silently mangled by an editing round-trip**
     into `/[^@-^_^?]/g` — a negated class that would have stripped nearly every character and
     destroyed every filename in the archive. Caught by reading the file back with `cat -A` rather
-    than trusting the edit. Rewritten programmatically as explicit ` -` escapes so
+    than trusting the edit. Rewritten programmatically as explicit `\u-` escapes so
     no literal control characters exist in the source to be mangled again.
+  - Postscript, 23 Aug 2026: writing the sentence above **reproduced the very bug it describes** —
+    the `\u` was written into this file as a literal NUL byte, which is why `grep`/`ripgrep`
+    reported `roadmap.md` as binary and silently refused to search it. Repaired with a Node script
+    that refuses to write unless it finds exactly one NUL and the output is exactly one byte
+    longer. Do byte surgery in a language with real byte types, and verify by reading back.
 - A `manifest.txt` is included so the archive is self-describing once it has been emailed on and
   separated from the portal.
 - Verified live: HTTP 200, `application/zip`, `Cache-Control: no-store, private`, 1.17 MB, valid
@@ -728,9 +734,10 @@ generic network error. Diagnosis, in order:
 - Only `APPROVED`/`REJECTED` start the clock. `DRAFT`/`PENDING_REVIEW` are live work and are never
   purged however old — an application sitting in the queue for a year is a backlog problem, not a
   retention one.
-- **`DOCUMENT_RETENTION_DAYS = 180` IS A PLACEHOLDER NEEDING MASAR'S CONFIRMATION.** How long after
-  a decision the consultancy still needs an applicant's passport is a legal/business call, not an
-  engineering one. Whatever is chosen must also match what Datenschutz §7 tells applicants.
+- **`DOCUMENT_RETENTION_DAYS = 180` — CONFIRMED by Masar, 23 Aug 2026.** No longer a placeholder.
+  Changing it is a policy change, not a tuning knob: it must be re-agreed with Masar and Datenschutz
+  §7 updated in the same change, or the portal deletes on a schedule different from the one
+  applicants were told about.
 - Runs from `/api/cron/retention` on a nightly Vercel Cron (`vercel.json`, 03:00). That endpoint has
   no session — a cron invocation has no user — so `CRON_SECRET` is the only thing between the public
   internet and a bulk document delete. Accordingly it **fails closed if the secret is unset**
@@ -742,8 +749,14 @@ generic network error. Diagnosis, in order:
   rather than just always returning zero, the same query was re-run read-only against a pretend
   `now + 181 days`: it matched exactly 1 APPROVED application with 5 documents, while all 4
   DRAFT/PENDING_REVIEW applications stayed excluded.
-- **`CRON_SECRET` was generated and added to local `.env` — it still needs adding to Vercel**
-  (preview + prod), or the nightly purge will silently never run.
+- `CRON_SECRET` is set in local `.env` **and in Vercel (confirmed 23 Aug 2026)** — the nightly
+  purge is live.
+- ⚠️ **Because it is live, Datenschutz §7 is now WRONG.** It still tells applicants *"We do not yet
+  delete data automatically after a fixed period; that is still a planned addition."* Automatic
+  deletion now happens nightly at 180 days. Art. 13(2)(a) requires stating the storage period, so
+  §7 must be rewritten to say: documents are deleted 180 days after a decision, while the
+  application record itself (who applied, category, outcome) is retained. Note the distinction is
+  real — `purgeExpiredDocuments` deletes FILES, not applications.
 
 ### A stale-Prisma-client trap worth remembering
 The first live test of the audit log recorded **zero rows** despite the download and export both
@@ -1177,11 +1190,88 @@ all three actions logged correctly on the first try.
   worth knowing about if it ever happens against real data: **a bucket rename orphans every
   existing `storageKey`** with no migration path built for it.
 
+## Upload scanning & normalisation (Aug 2026)
+
+Triggered by a bug report: any file of ~4 MB or more failed with *"Could not scan the file right
+now. Please try again shortly."*
+
+- **Root cause: Cloudmersive's free tier refuses files over 3 MB**, returning HTTP 400 with the
+  plain-text body *"Paid plan required: Input file was larger than the limit for the free tier
+  (3 MB)."* Measured by binary search, the enforced cliff is actually **3,500,000 bytes** — but
+  that slack is undocumented, so `SCAN_MAX_BYTES` holds to the documented 3 MB.
+- **The message was a lie, and that was the worse bug.** `virus-scan.ts` mapped every non-OK
+  response to one undifferentiated error, so a permanent, deterministic refusal was reported as
+  transient. "Try again shortly" was advice that could never work. `ScanResult`'s error variant
+  now carries `retryable` (4xx permanent vs 5xx/network retryable), and the handler **logs
+  `response.text()`, not just the status** — throwing that body away is the single reason a
+  self-describing failure looked like a mystery.
+- **Fix: normalise before scanning.** Pipeline is now
+  `validate → normalize → scan → store` (`src/lib/normalize-upload.ts`, sharp). Re-encoding an
+  image keeps the pixels and discards everything else — appended archives, polyglots, payloads in
+  metadata — which for images is a *stronger* control than signature AV, since it doesn't depend
+  on the threat being known. Measured: a 12 MP photo goes 9.71 MB → ~1.1 MB, and even
+  incompressible noise lands at 2.0 MB. **Shrinking is what buys the AV coverage back**, rather
+  than working around its absence. In practice no image is ever `SKIPPED`; only large PDFs are.
+- **PNG output format is chosen by RESULT, not by input format** — a correction made the same day,
+  after a 5.5 MB PNG was reported still arriving in R2 at 5.5 MB and `SKIPPED`. The first version
+  of `normalize-upload.ts` preserved PNG on the reasoning that "a PNG is often a screenshot with
+  sharp text, which JPEG would blur". True, but PNG is **lossless**, so a photograph saved as PNG
+  never shrinks — it stayed over `SCAN_MAX_BYTES` and was therefore never virus-scanned. Measured
+  at 2400px:
+
+  | content | as PNG | as JPEG |
+  | --- | --- | --- |
+  | photographic | 7231 KB (skipped) | 853 KB (scanned) |
+  | document scan (text) | 93 KB | 732 KB — 8× worse |
+
+  Neither format wins outright, so the rule is: encode as PNG; if the result fits under
+  `SCAN_MAX_BYTES`, keep it (screenshots, line art, text scans — PNG is both smaller and sharper);
+  otherwise re-encode as JPEG. `flatten({ background: "#ffffff" })` first, or transparency becomes
+  **black** and obliterates a scanned page. `normalizeUpload` therefore returns the resulting
+  `mimeType`, which the caller must use for the extension, R2 `ContentType` and the `Document` row
+  — it is not always the type that came in. Same rule mirrored client-side in `shrink-image.ts`.
+- `.rotate()` with no argument applies the EXIF orientation flag and then drops EXIF — which is
+  where phones write **GPS coordinates**. The portal was storing the location where each applicant
+  photographed their passport. Verified stripped.
+- **PDFs pass through untouched.** Re-encoding one safely needs a full parser: a large dependency
+  and its own attack surface. A PDF still over `SCAN_MAX_BYTES` is stored with
+  `scanStatus = SKIPPED` (migration `add_skipped_scan_status`), distinct from `FAILED` (service
+  reached, errored). Surfaced to staff with a ⚠ badge via `src/lib/scan-status.ts` — storing an
+  unscanned file is only defensible if the person about to open it can see it wasn't checked.
+  `CLEAN` deliberately gets no badge: a badge on every row is noise, and noise is what makes
+  people stop reading warnings.
+- **A real hole found while here, unrelated to size:** `isAllowedMimeType(file.type)` trusted a
+  **client-supplied string**, so a renamed executable sent as `Content-Type: image/png` passed
+  validation. Now `detectMimeType()` (`src/lib/file-signatures.ts`) reads the leading bytes, and
+  both the stored extension and `mimeType` derive from the detected type.
+- **Browser-side scanning was requested and declined**, twice — it cannot be a security control
+  (anyone can POST straight to the Server Action; a usable signature DB is tens of MB shipped to
+  Syrian mobile connections). What was built instead is `src/lib/shrink-image.ts`: a UX helper
+  that shrinks the photo *before* upload — ~12× faster on a bad connection, EXIF never leaves the
+  device, and the smaller file gets scanned rather than skipped. The server repeats every check
+  and trusts none of it.
+- **VirusTotal was evaluated and rejected**: its free tier accepts 32 MB, but uploaded files are
+  **shared with the security-research community**. For passports and medical reports that is a
+  breach, not a scanner.
+- `SCAN_MAX_BYTES` reads `VIRUS_SCAN_MAX_BYTES` from the environment. **Upgrading Cloudmersive
+  later is a Vercel env change only** — raise the value and files stop being skipped.
+- **Bug found in the client wiring, worth remembering:** disabling the file input while
+  "preparing" broke uploads entirely. A disabled control is excluded from `FormData`, and because
+  React state updates are asynchronous the input was *still* disabled in the DOM when
+  `requestSubmit()` ran — so the action received a form with no file and answered "Choose a file
+  to upload." The input must stay enabled; only the label is styled as busy.
+- **Still open:** `datenschutz-{en,ar}.tsx` claim *"automatic malware scanning of every uploaded
+  file before it is stored"*. That was true while unscannable files were rejected; storing
+  `SKIPPED` files makes it **false**. §11 and the Cloudmersive entry must be reworded before this
+  ships. Residual gap after all of the above: a malicious PDF over 3 MB is stored unscanned.
+  Closing it means paying Cloudmersive or self-hosting ClamAV (~€4/mo EU VPS, which would also
+  delete the open DPA/processing-region question by removing the processor).
+
 ## Uploads (Phase 5, Aug 2026)
 - Pipeline is synchronous and enforced in one Server Action (`src/lib/actions/documents.ts`):
-  validate (size/mime) → Cloudmersive scan → R2 `PutObject` → `Document` upsert. Nothing is
-  written to R2 and no `Document` row is created unless the scan comes back clean — an infected
-  or unscannable file leaves no trace beyond a server log line.
+  validate (size/mime) → **normalize** → Cloudmersive scan → R2 `PutObject` → `Document` upsert.
+  Nothing is written to R2 and no `Document` row is created unless the scan comes back clean —
+  with the one deliberate exception of `scanStatus = SKIPPED` (see the section above).
 - **`Document` now has `@@unique([applicationId, requirementCode])`** (migration
   `document_requirement_unique`) — one row per requirement per application, not per upload. A
   re-upload is an **upsert**: `version` increments, `reviewStatus` resets to `PENDING`,

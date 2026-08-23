@@ -8,13 +8,14 @@ import { recordAudit } from "./audit";
  * How long a decided application's UPLOADED FILES are kept before being
  * purged, counted from the moment it reached a terminal status.
  *
- * ⚠️ THIS NUMBER IS A PLACEHOLDER AND NEEDS MASAR'S CONFIRMATION. It is a
- * business/legal policy decision, not an engineering one — how long after a
- * visa decision does the consultancy still need the applicant's passport and
- * medical reports on hand? 180 days is a deliberately conservative starting
- * point (long enough to reopen a case in the same season, short enough to be
- * a real limit), NOT an authoritative answer. Whatever is chosen must also
- * match what Datenschutz §7 tells applicants.
+ * CONFIRMED by Masar, 23 Aug 2026 — this is a settled business/legal policy
+ * decision, no longer a placeholder. 180 days is long enough to reopen a case
+ * in the same application season, short enough to be a real limit.
+ *
+ * Changing it is a POLICY change, not a tuning knob: it must be agreed with
+ * Masar and Datenschutz §7 must be updated in the same change, or the portal
+ * will be deleting data on a schedule different from the one applicants were
+ * told about.
  */
 export const DOCUMENT_RETENTION_DAYS = 180;
 

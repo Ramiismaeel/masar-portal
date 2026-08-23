@@ -12,8 +12,10 @@ import {
 import { requirementsFor, type Requirement } from "@/lib/checklists";
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
 import { DOCUMENT_REVIEW_STATUS_META } from "@/lib/document-review-status";
+import { SCAN_STATUS_META } from "@/lib/scan-status";
 import { DocumentReviewControl } from "@/components/admin/document-review-control";
 import { DecideApplicationControl } from "@/components/admin/decide-application-control";
+import { ReopenApplicationControl } from "@/components/admin/reopen-application-control";
 import type { Document } from "@/generated/prisma/client";
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -21,6 +23,16 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric",
 });
+
+const DECIDED_STATUSES = ["APPROVED", "REJECTED", "NEEDS_REVISION"] as const;
+
+/** Narrows the status so ReopenApplicationControl gets a precise union
+ *  rather than the whole ApplicationStatus enum. */
+function isDecidedStatus(
+  status: string,
+): status is (typeof DECIDED_STATUSES)[number] {
+  return (DECIDED_STATUSES as readonly string[]).includes(status);
+}
 
 export default async function AdminApplicationPage({
   params,
@@ -185,9 +197,18 @@ export default async function AdminApplicationPage({
 
       {canReview ? (
         <DecideApplicationControl applicationId={application.id} />
+      ) : isDecidedStatus(application.status) ? (
+        // A decided application is no longer a dead end: it can be sent back
+        // to the queue. Previously this branch was a bare "already decided"
+        // sentence with no way forward, and APPROVED in particular could not
+        // be moved by anything in the app.
+        <ReopenApplicationControl
+          applicationId={application.id}
+          currentStatus={application.status}
+        />
       ) : (
         <p className="text-center text-sm text-muted-foreground">
-          This application has already been decided.
+          This application has not been submitted yet.
         </p>
       )}
     </div>
@@ -237,6 +258,18 @@ function DocumentRow({
             >
               {document.fileName}
             </a>
+          )}
+
+          {/* Shown only when something is wrong. A file that was scanned
+              cleanly gets no badge — putting one on every row would train
+              staff to stop reading this line, which is exactly when the one
+              that matters gets missed. */}
+          {document && SCAN_STATUS_META[document.scanStatus].warn && (
+            <span
+              className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium ${SCAN_STATUS_META[document.scanStatus].className}`}
+            >
+              ⚠ {SCAN_STATUS_META[document.scanStatus].labelEn}
+            </span>
           )}
         </div>
 

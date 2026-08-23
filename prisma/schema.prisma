@@ -94,6 +94,16 @@ enum ScanStatus {
   CLEAN
   INFECTED
   FAILED
+  /// The file was never scanned because it exceeded the scanner's size limit
+  /// (SCAN_MAX_BYTES in src/lib/uploads.ts — 3 MB on Cloudmersive's free
+  /// tier). Distinct from FAILED, which means the service WAS reached and
+  /// errored. In practice this only ever applies to large PDFs: images are
+  /// re-encoded down to a few hundred KB before scanning, so they always fit.
+  ///
+  /// This must stay visible to admins in the review UI. Storing an unscanned
+  /// file is only defensible if the person about to open it can see that it
+  /// was not checked.
+  SKIPPED
 }
 
 enum ReviewStatus {
@@ -136,6 +146,11 @@ enum AuditAction {
   DOCUMENT_DOWNLOADED
   DOCUMENT_REVIEWED
   APPLICATION_DECIDED
+  /// An admin sent an already-decided application back for review, undoing a
+  /// prior outcome. Deliberately its own action rather than another
+  /// APPLICATION_DECIDED: reversing a decision the applicant was already
+  /// told about is the kind of event that should be trivially findable.
+  APPLICATION_REOPENED
   APPLICATION_EXPORTED
   ACCOUNT_DELETED
   RETENTION_PURGE

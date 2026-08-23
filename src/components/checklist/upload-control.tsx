@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Upload, Loader2 } from "lucide-react";
+
+import { shrinkImage } from "@/lib/shrink-image";
 
 import {
   uploadDocument,
@@ -31,7 +33,41 @@ function FileTrigger({
   primary: boolean;
 }) {
   const { pending } = useFormStatus();
+  const [preparing, setPreparing] = useState(false);
   const t = useTranslations("Checklist");
+
+  const busy = pending || preparing;
+
+  /**
+   * Shrinks an image before submitting, then swaps it back into the input so
+   * the form sends the smaller file.
+   *
+   * `input.files` looks read-only but is assignable from a DataTransfer's
+   * FileList — that is the supported way to replace a file input's contents.
+   */
+  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    // Captured BEFORE the first await. React resets `event.currentTarget` to
+    // null once the handler returns, and an async handler returns at its
+    // first await — so reading it afterwards would throw.
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    setPreparing(true);
+    try {
+      const prepared = await shrinkImage(file);
+
+      if (prepared !== file) {
+        const transfer = new DataTransfer();
+        transfer.items.add(prepared);
+        input.files = transfer.files;
+      }
+    } finally {
+      setPreparing(false);
+    }
+
+    input.form?.requestSubmit();
+  }
 
   return (
     <>
@@ -47,13 +83,21 @@ function FileTrigger({
         // re-validates the actual Content-Type, which is the real control.
         accept="application/pdf,image/jpeg,image/png"
         required
+        // Deliberately `pending`, NOT `busy`. Disabling this input while
+        // `preparing` is true breaks the upload: a disabled control is
+        // excluded from FormData, and because React state updates are
+        // asynchronous, the input is still disabled in the DOM at the moment
+        // requestSubmit() runs — so the Server Action receives a form with no
+        // file and rejects it with "Choose a file to upload."
+        // Nothing is lost by leaving it enabled: the input is sr-only and the
+        // label below already has pointer-events-none while busy.
         disabled={pending}
         aria-label={label}
         // Submits the instant a file is chosen — no separate "Upload" tap.
         // There's nothing to review first (no preview, nothing partial worth
         // pausing on), so the extra step was only friction — worse on a
         // phone, and worse still for someone new to this kind of form.
-        onChange={(event) => event.currentTarget.form?.requestSubmit()}
+        onChange={handleChange}
         className="peer sr-only"
       />
 
@@ -65,13 +109,16 @@ function FileTrigger({
             size: primary ? "default" : "sm",
           }),
           "w-full cursor-pointer peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
-          pending && "pointer-events-none opacity-50",
+          busy && "pointer-events-none opacity-50",
         )}
       >
-        {pending ? (
+        {busy ? (
           <>
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            {t("uploading")}
+            {/* Shrinking a 12 MP photo takes a moment on a phone, and it
+                happens before any upload starts — so it needs its own label
+                rather than silently sitting on "Uploading…". */}
+            {preparing ? t("preparing") : t("uploading")}
           </>
         ) : (
           <>
