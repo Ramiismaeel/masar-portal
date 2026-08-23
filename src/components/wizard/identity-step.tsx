@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useTranslations } from "next-intl";
 
@@ -32,6 +32,7 @@ function SubmitButton() {
 export function IdentityStep({
   applicationId,
   defaults,
+  phonePattern,
 }: {
   applicationId: string;
   defaults: {
@@ -40,12 +41,29 @@ export function IdentityStep({
     passportNumber: string;
     passportExpiry: string; // "YYYY-MM-DD" or ""
   };
+  /** Same regex the Server Action validates with (its `.source`) — one rule,
+   *  enforced natively by the browser as you type instead of only after a
+   *  round-trip. */
+  phonePattern: string;
 }) {
   const t = useTranslations("Wizard");
   const [state, formAction] = useActionState(
     saveIdentityStep,
     EMPTY_WIZARD_STATE,
   );
+
+  // Controlled, not defaultValue: a validation error re-renders this form
+  // with the SAME typed values still showing (state lives here, in the
+  // client, not derived from the server's stale defaults on every render) —
+  // an uncontrolled field driven by defaultValue only sets its value once on
+  // mount, but this app has already hit cases (see docs/roadmap.md "i18n")
+  // where a Server Action round-trip recreated the input's DOM node and
+  // silently reset it back to the original server value, wiping whatever
+  // the applicant had just typed. Controlled state can't be reset that way.
+  const [fullNameLatin, setFullNameLatin] = useState(defaults.fullNameLatin);
+  const [phone, setPhone] = useState(defaults.phone);
+  const [passportNumber, setPassportNumber] = useState(defaults.passportNumber);
+  const [passportExpiry, setPassportExpiry] = useState(defaults.passportExpiry);
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
@@ -65,7 +83,8 @@ export function IdentityStep({
         <Input
           id="fullNameLatin"
           name="fullNameLatin"
-          defaultValue={defaults.fullNameLatin}
+          value={fullNameLatin}
+          onChange={(e) => setFullNameLatin(e.target.value)}
           placeholder={t("fullNameLatinPlaceholder")}
           autoComplete="name"
           dir="ltr"
@@ -84,14 +103,17 @@ export function IdentityStep({
           id="phone"
           name="phone"
           type="tel"
-          defaultValue={defaults.phone}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
           placeholder="+963 …"
           autoComplete="tel"
           inputMode="tel"
           dir="ltr"
+          pattern={phonePattern}
           required
           aria-invalid={Boolean(state.fieldErrors.phone)}
         />
+        <p className="text-xs text-muted-foreground">{t("phoneHint")}</p>
         <FieldError message={state.fieldErrors.phone} />
       </div>
 
@@ -100,7 +122,8 @@ export function IdentityStep({
         <Input
           id="passportNumber"
           name="passportNumber"
-          defaultValue={defaults.passportNumber}
+          value={passportNumber}
+          onChange={(e) => setPassportNumber(e.target.value)}
           autoCapitalize="characters"
           dir="ltr"
           required
@@ -116,7 +139,8 @@ export function IdentityStep({
           id="passportExpiry"
           name="passportExpiry"
           type="date"
-          defaultValue={defaults.passportExpiry}
+          value={passportExpiry}
+          onChange={(e) => setPassportExpiry(e.target.value)}
           dir="ltr"
           required
           aria-invalid={Boolean(state.fieldErrors.passportExpiry)}

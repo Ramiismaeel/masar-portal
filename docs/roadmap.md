@@ -333,6 +333,62 @@ page.tsx` and `upload-control.tsx`, not guessed at.
   correctly. Checked Arabic/RTL rendering too — icons and buttons mirror correctly, nothing
   clipped. Test application deleted afterward, no leftover data.
 
+### Stray Vercel favicon (found & fixed, same day)
+Rami noticed the browser tab sometimes showed the Vercel triangle logo instead of the Masar mark.
+Cause: `src/app/favicon.ico` was still the literal `create-next-app` default (confirmed by
+converting it to a viewable PNG — it really was the black triangle), untouched since the initial
+scaffold (Aug 19) — while `src/app/icon.png` (the real mark, generated during the Phase 7 PWA
+pass, Aug 22) sat right next to it. Next's file-based metadata convention auto-detects *both* and
+emits a `<link rel="icon">` for each; which one a browser actually paints in the tab is
+inconsistent (varies by browser and by favicon cache state), which is exactly the intermittent
+"sometimes" Rami described — it was never actually random, both icons were genuinely being served
+at once. Fixed by deleting the stale `favicon.ico` outright — `icon.png` alone is sufficient,
+Next's own convention doesn't require a `.ico` file. Confirmed live: `document.querySelectorAll
+('link[rel*="icon"]')` now returns exactly one entry (`icon.png`, 512×512), no `favicon.ico`
+reference anywhere in the rendered `<head>`. A visitor's own browser may still show the old icon
+from its favicon cache until that clears — this fixes the source, not already-cached tabs.
+
+### Form enhancements — prefill, phone validation, error-clearing bug, dashboard logo (same day)
+Four small, concrete asks from Rami, all in the wizard's identity step and the `(app)` header.
+- **Name prefill.** `fullNameLatin` (a passport-Latin-letters-only field) now falls back to
+  `session.user.name` when the application doesn't have one saved yet — but *only* when that name
+  already satisfies the same Latin-letters rule the field validates against
+  (`isLatinName()`, new export in `src/lib/wizard.ts`, `.source` shared with the Server Action's
+  own check so there's exactly one rule, not two that could drift). A Google/email name written in
+  Arabic script is deliberately left blank rather than prefilled with something that would fail
+  validation the instant they hit save — prefilling wrong is worse than not prefilling.
+- **Phone validation, made visible before the round-trip.** The server-side regex
+  (`isPhoneNumber()`, same `wizard.ts`, same "use server" can't-export-a-const reason the name
+  pattern lives there too) is now also passed down as the input's HTML `pattern` attribute
+  (`.source`) plus a real hint line ("Include the country code, e.g. +963 912 345 678") — a
+  malformed number now gets caught by the browser's own native validation as you type, not only
+  after a submit-and-reload.
+- **The real bug: fields silently clearing on a validation error.** `IdentityStep`'s four fields
+  used `defaultValue` (uncontrolled) rather than `value`+`onChange`. This project already has one
+  documented case of exactly this failure mode — `docs/roadmap.md`'s own i18n section describes
+  `revalidatePath("/", "layout")` recreating an uncontrolled `<input>`'s DOM node and silently
+  reverting it to its stale server value, which is why `setLocale` was rewritten to avoid
+  `revalidatePath` entirely. `IdentityStep` never got the same fix because the wizard's own Server
+  Action doesn't call `revalidatePath` on a *validation failure* path (only after a successful
+  save) — but the failure was real and reproducible anyway: typing an invalid name and submitting
+  showed the error correctly, but on a re-render triggered by the action dispatch itself, the
+  three OTHER fields (and, worse, the invalid field, replaced with a value the applicant never
+  actually typed) reset back to whatever was last saved in the database. Fixed by converting all
+  four to controlled inputs with local `useState`, seeded once from the server `defaults` prop —
+  state that lives in the client component instance survives any number of parent re-renders,
+  regardless of what triggers them. Confirmed live: intentionally broke the name field, submitted,
+  watched the invalid value stay showing next to its error while phone/passport/expiry visibly
+  kept their correct values — the actual bug, not a hypothetical one.
+- **Dashboard logo.** `(app)/layout.tsx`'s header still had the plain pre-rebrand "Masar Portal"
+  text wordmark with no mark — missed in the original Phase 10 pass because `(app)` was explicitly
+  out of scope for that one. Added the same `icon-192.png` + wordmark treatment used everywhere
+  else now (home, auth pages), matching them exactly rather than inventing a fourth variant.
+- Verified live against the real dev database: created a genuinely fresh Ausbildung draft (no
+  `fullNameLatin` saved anywhere yet) and confirmed the name prefill actually fires from the
+  signed-in session, not just from a coincidentally-matching previous save; confirmed the phone
+  hint text renders; confirmed the dashboard header shows the logo. Test applications deleted
+  afterward, no leftover data. `npm run typecheck` / `npm run lint` clean throughout.
+
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
   (`src/i18n/locale.ts`'s `LOCALE_COOKIE`), read server-side in `src/i18n/request.ts`. Same URL

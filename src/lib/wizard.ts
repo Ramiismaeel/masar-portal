@@ -8,6 +8,33 @@ import type { CategoryValue } from "@/lib/categories";
  * is typed data for staff, and lives in real columns rather than here.
  */
 
+/**
+ * Passport-name rule, shared between the Server Action's validation
+ * (src/lib/actions/wizard.ts, which — being "use server" — cannot export a
+ * plain const itself) and the wizard page's name-prefill decision: a
+ * signed-up `User.name` is only ever used to prefill `fullNameLatin` when it
+ * already satisfies this pattern, never forced in as-is.
+ */
+const LATIN_NAME_PATTERN = /^[A-Za-z][A-Za-z\s.'-]{2,79}$/;
+
+export function isLatinName(value: string): boolean {
+  return LATIN_NAME_PATTERN.test(value);
+}
+
+/**
+ * Same reasoning as isLatinName above: one pattern, shared by the Server
+ * Action's real validation and the identity form's HTML `pattern` attribute
+ * (`.source`, since `pattern` takes a string) — a phone typo shows up
+ * instantly via native browser validation instead of a round-trip.
+ */
+const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,19}$/;
+
+export function isPhoneNumber(value: string): boolean {
+  return PHONE_PATTERN.test(value);
+}
+
+export const PHONE_PATTERN_SOURCE = PHONE_PATTERN.source;
+
 export const INSTRUCTION_LANGUAGES = [
   { value: "de", labelEn: "German", labelAr: "الألمانية" },
   { value: "en", labelEn: "English", labelAr: "الإنجليزية" },

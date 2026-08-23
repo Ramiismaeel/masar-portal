@@ -86,6 +86,7 @@
     "fullNameLatinPlaceholder": "كما هو مطبوع في جواز سفرك",
     "fullNameLatinHint": "تمامًا كما يظهر في السطر القابل للقراءة الآلية في جواز سفرك.",
     "phone": "رقم الهاتف",
+    "phoneHint": "أدرج رمز البلد، مثال: ‎+963 912 345 678.",
     "passportNumber": "رقم جواز السفر",
     "passportExpiry": "تاريخ انتهاء صلاحية جواز السفر",
     "saveAndContinue": "حفظ ومتابعة",
