@@ -16,7 +16,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   const t = useTranslations("Checklist");
   return (
-    <Button type="submit" className="w-full" disabled={pending}>
+    <Button type="submit" className="w-full" loading={pending}>
       {pending ? t("submitting") : t("submit")}
     </Button>
   );

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useTranslations } from "next-intl";
+import { Loader2 } from "lucide-react";
 
 import { deleteDocument, type DeleteDocumentState } from "@/lib/actions/documents";
 
@@ -15,8 +16,10 @@ function ConfirmButton() {
     <button
       type="submit"
       disabled={pending}
-      className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+      aria-busy={pending || undefined}
+      className="inline-flex items-center gap-1 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
     >
+      {pending && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
       {pending ? t("removing") : t("confirm")}
     </button>
   );

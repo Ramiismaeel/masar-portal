@@ -477,6 +477,50 @@ One more round on the drawer above, all from a closer look at it in the browser.
   instantly (icon swaps moon→sun, label updates to "Switch to light mode", the whole page behind
   the backdrop visibly goes dark) — then toggled back to light before finishing.
 
+### Pending-state UI: spinners, route skeletons, page transitions (Aug 2026)
+Rami: login / signup / upload / submit "take some time," with no feedback while they do. This
+matters more here than in a typical app — the roadmap's own audience note is applicants in Syria,
+often on mobile data, and the upload path in particular is genuinely slow by design (validate →
+Cloudmersive scan → R2 → DB, all synchronous in one Server Action).
+- **The problem was uniform, so the fix is one component.** Every pending button in the app used
+  the same pattern: `disabled={pending}` plus a swapped label (`"Log in"` → `"Logging in…"`). On a
+  fast connection that's invisible; on a slow one a label that only changes text reads as "nothing
+  happened," and people tap again. Rather than hand-rolling a spinner per form, `Button` (the
+  shared `ui/` primitive) gained a `loading` prop that renders a `Loader2` spinner before the
+  label, sets `disabled`, and sets `aria-busy` — so screen-reader users get the state too, not
+  just sighted ones. Converted every caller: login, signup, Google sign-in, forgot-password,
+  reset-password, resend-verification, sign-out, both wizard steps, start-application,
+  submit-application, delete-application. `delete-document`'s confirm is a bare `<button>` (a tiny
+  text link, not a `Button`) and got the same treatment inline.
+  - Deliberately documented on the prop itself: **don't** pass `loading` alongside
+    `render={<Link/>}`. An anchor has no disabled state, so it would spin while staying clickable
+    — a worse lie than no spinner. All the `render={<Link/>}` buttons in this app are plain
+    navigation and were left alone.
+- **Route-level skeletons, not just button spinners.** A button spinner covers "I submitted
+  something"; it does nothing for "I tapped View checklist and the page is fetching from Neon."
+  Added `src/app/(app)/loading.tsx` — Next renders it instantly on navigation while the server
+  component awaits its queries. One file covers every nested `(app)` route that doesn't define its
+  own. The shape deliberately mirrors the dashboard/checklist layout (heading + stack of bordered
+  rows with an icon, two text lines, and a status pill) rather than being a generic centered
+  spinner, so the page appears to *fill in* rather than *replace*. New `ui/skeleton.tsx` is the
+  pulsing block primitive.
+- **Soft page transitions.** `(app)`'s `<main>` and `(auth)`'s card wrapper now carry
+  `animate-in fade-in slide-in-from-bottom-1 duration-300` (the `tw-animate-css` utilities wired in
+  during the checklist pass). Both are guarded with `motion-reduce:animate-none` — these are
+  decorative, so anyone who's asked their OS for reduced motion gets none of it. The button
+  spinners deliberately do **not** carry that guard: a spinner is information, not decoration, and
+  silently freezing it would remove the very feedback this change exists to add.
+- **Verified live, and not by screenshot** — a screenshot round-trip is ~1s, slower than most of
+  these actions, so trying to photograph a spinner mid-flight was unreliable and kept missing.
+  Used a `MutationObserver` in the page instead, which is deterministic: clicking "Start
+  application" recorded `aria-busy="true"`, `disabled: true`, `hasSpinner: true` (a real
+  `svg.animate-spin` in the DOM) and the label swapped to `"Creating…"` — proving the shared
+  `Button` code path every converted caller uses. Same technique for the route skeleton: observed
+  **17** `[data-slot="skeleton"]` blocks appear during a client-side nav to `/dashboard`, which is
+  exactly the count `loading.tsx` renders (1 heading + 1 section label + 3 cards × 5 blocks).
+  Cleaned up the draft application that "Start application" created as a side effect of the test,
+  and restored the theme cookie to light afterwards.
+
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
   (`src/i18n/locale.ts`'s `LOCALE_COOKIE`), read server-side in `src/i18n/request.ts`. Same URL

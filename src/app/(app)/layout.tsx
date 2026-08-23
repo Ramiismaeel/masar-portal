@@ -97,7 +97,16 @@ export default async function DashboardLayout({
         </div>
       )}
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+      {/* A short fade+rise on each navigation, so a page swap reads as a
+          transition rather than an abrupt repaint. `motion-reduce:` opts
+          out entirely for anyone who's asked their OS for less motion —
+          decorative only, unlike the button spinners, which stay. */}
+      <main
+        className="mx-auto w-full max-w-5xl flex-1 animate-in px-4 py-8 fade-in
+          slide-in-from-bottom-1 duration-300 motion-reduce:animate-none"
+      >
+        {children}
+      </main>
 
       <footer className="border-t border-border">
         <div className="mx-auto w-full max-w-5xl px-4 py-6">

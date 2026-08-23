@@ -80,7 +80,7 @@ export default function ForgotPasswordPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
+            <Button type="submit" className="w-full" loading={isSubmitting}>
               {isSubmitting ? t("submitting") : t("submit")}
             </Button>
 

@@ -1,5 +1,6 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -44,14 +45,39 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  loading = false,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /**
+     * Shows a spinner before the label and disables the button. Lives here
+     * rather than being re-implemented per form so every pending action in
+     * the app looks the same — a label that only swaps its text (the old
+     * pattern everywhere) reads as "nothing happened" on a slow connection,
+     * which is exactly the case this app has most: applicants in Syria,
+     * uploading scans over mobile data.
+     *
+     * Only for real <button>s. Don't pass it alongside `render={<Link/>}` —
+     * an anchor has no disabled state, so it would spin while staying
+     * clickable.
+     */
+    loading?: boolean
+  }) {
   return (
     <ButtonPrimitive
       data-slot="button"
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {loading && (
+        <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+      )}
+      {children}
+    </ButtonPrimitive>
   )
 }
 

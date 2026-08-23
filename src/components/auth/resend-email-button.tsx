@@ -45,7 +45,7 @@ export function ResendEmailButton({ email }: { email: string }) {
         variant="outline"
         size="sm"
         onClick={handleResend}
-        disabled={isResending}
+        loading={isResending}
       >
         {isResending ? t("sending") : t("button")}
       </Button>

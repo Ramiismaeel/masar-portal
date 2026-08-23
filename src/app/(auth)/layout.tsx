@@ -34,7 +34,12 @@ export default async function AuthLayout({
           <Image src="/icon-192.png" alt="" width={28} height={28} className="rounded-md" />
           Masar <span className="font-medium text-muted-foreground">Portal</span>
         </Link>
-        <div className="w-full max-w-md">{children}</div>
+        <div
+          className="w-full max-w-md animate-in fade-in slide-in-from-bottom-1
+            duration-300 motion-reduce:animate-none"
+        >
+          {children}
+        </div>
         <div className="flex w-full max-w-md justify-center">
           <LegalFooter locale={locale} />
         </div>

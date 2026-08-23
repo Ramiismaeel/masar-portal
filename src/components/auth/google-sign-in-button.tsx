@@ -50,7 +50,7 @@ export function GoogleSignInButton({
       type="button"
       variant="outline"
       className="w-full"
-      disabled={isPending}
+      loading={isPending}
       onClick={async () => {
         setIsPending(true);
         const { error } = await authClient.signIn.social({

@@ -17,7 +17,7 @@ function SubmitButton() {
   const { pending } = useFormStatus();
   const t = useTranslations("Wizard");
   return (
-    <Button type="submit" size="lg" disabled={pending}>
+    <Button type="submit" size="lg" loading={pending}>
       {pending ? t("saving") : t("saveAndFinish")}
     </Button>
   );

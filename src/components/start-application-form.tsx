@@ -18,7 +18,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
   const t = useTranslations("NewApplication");
 
   return (
-    <Button type="submit" size="lg" disabled={pending || disabled}>
+    <Button type="submit" size="lg" loading={pending} disabled={disabled}>
       {pending ? t("starting") : t("start")}
     </Button>
   );

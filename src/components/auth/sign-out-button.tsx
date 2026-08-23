@@ -23,7 +23,7 @@ export function SignOutButton({ className }: { className?: string }) {
       variant="outline"
       size="sm"
       onClick={handleSignOut}
-      disabled={isSigningOut}
+      loading={isSigningOut}
       className={className}
     >
       {isSigningOut ? t("signingOut") : t("button")}
