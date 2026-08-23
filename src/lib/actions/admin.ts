@@ -8,6 +8,7 @@ import { sendEmail } from "@/lib/email";
 import { applicationDecisionEmail } from "@/lib/emails/application-decision";
 import { findRequirement } from "@/lib/checklists";
 import { isCategoryValue } from "@/lib/categories";
+import { recordAudit } from "@/lib/audit";
 
 const REVIEW_STATUSES = ["APPROVED", "REJECTED", "NEEDS_REVISION"] as const;
 type ReviewDecision = (typeof REVIEW_STATUSES)[number];
@@ -47,7 +48,7 @@ export async function reviewDocument(
 
   const application = await prisma.application.findUnique({
     where: { id: applicationId },
-    select: { status: true, category: true },
+    select: { status: true, category: true, userId: true },
   });
 
   if (!application) {
@@ -89,6 +90,17 @@ export async function reviewDocument(
     console.error("reviewDocument failed", error);
     return { error: "Could not save the review. Please try again." };
   }
+
+  // After the write, not before: this records what happened, and nothing
+  // happened until the update above succeeded.
+  await recordAudit({
+    action: "DOCUMENT_REVIEWED",
+    actorUserId: session.user.id,
+    subjectUserId: application.userId,
+    targetType: "document",
+    targetId: `${applicationId}:${requirementCode}`,
+    metadata: { requirementCode, reviewStatus: rawStatus, hasNote: Boolean(note) },
+  });
 
   revalidatePath(`/admin/applications/${applicationId}`);
 
@@ -135,6 +147,7 @@ export async function decideApplication(
     select: {
       id: true,
       status: true,
+      userId: true,
       user: { select: { email: true, name: true } },
     },
   });
@@ -156,6 +169,15 @@ export async function decideApplication(
     console.error("decideApplication failed", error);
     return { error: "Could not save the decision. Please try again." };
   }
+
+  await recordAudit({
+    action: "APPLICATION_DECIDED",
+    actorUserId: session.user.id,
+    subjectUserId: application.userId,
+    targetType: "application",
+    targetId: application.id,
+    metadata: { decision: rawDecision },
+  });
 
   // A failed email must not undo or block the decision that already saved —
   // same reasoning as onExistingUserSignUp's mailer in auth.ts.

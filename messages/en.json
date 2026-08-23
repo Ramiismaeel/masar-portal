@@ -38,7 +38,25 @@
     "impressumTitle": "Impressum",
     "privacyTitle": "Privacy Policy"
   },
+  "Account": {
+    "title": "Your account",
+    "name": "Name",
+    "email": "Email",
+    "deleteTitle": "Delete your account",
+    "deleteBody": "This permanently removes your account, every application you have started, and every document you have uploaded — including your passport. This cannot be undone.",
+    "deleteAction": "Delete my account",
+    "deleteConfirmQuestion": "Are you sure? We will email you a link to confirm.",
+    "deleteConfirmYes": "Yes, email me the link",
+    "deleteCancel": "Cancel",
+    "deleteError": "Could not start the deletion. Please try again.",
+    "deleteSentTitle": "Check your inbox",
+    "deleteSentBody": "We sent you a link to confirm deleting your account. Open it in this browser while still signed in. The link expires in 1 hour.",
+    "deletedTitle": "Your account has been deleted",
+    "deletedBody": "Your account, applications and uploaded documents have been permanently removed. Thank you for using Masar Portal.",
+    "deletedHome": "Back to home"
+  },
   "AppLayout": {
+    "account": "Account",
     "admin": "Admin",
     "myDashboard": "My dashboard",
     "verifyBanner": "Verify your email to submit an application. We sent a link to <b>{email}</b>.",

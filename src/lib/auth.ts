@@ -4,6 +4,9 @@ import { prisma } from "./prisma";
 import { sendEmail } from "./email";
 import { verificationEmail } from "./emails/verification";
 import { resetPasswordEmail } from "./emails/reset-password";
+import { deleteAccountEmail } from "./emails/delete-account";
+import { purgeUserStorage } from "./account-deletion";
+import { recordAudit } from "./audit";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -53,6 +56,58 @@ export const auth = betterAuth({
         type: "string",
         input: false,
         defaultValue: "en",
+      },
+    },
+
+    // GDPR Art. 17 self-service erasure (Phase 11). The Datenschutz has
+    // promised this in writing since Phase 8 ("we do not yet offer... this is
+    // a planned feature") — that text gets updated alongside this.
+    deleteUser: {
+      enabled: true,
+
+      // Email confirmation rather than a password prompt, deliberately.
+      // Better Auth offers three paths (read from its source, not docs):
+      // a password check, a fresh-session check, or this emailed token.
+      //   - A password check would hard-fail every Google-only account —
+      //     they have no credential row to verify against.
+      //   - The fresh-session fallback (default: any session under a day old)
+      //     would let anyone holding an unlocked, still-signed-in phone
+      //     permanently destroy someone's visa application. This app's own
+      //     threat model already names shared/internet-café devices.
+      // The emailed token is the only option that covers both auth methods
+      // and proves mailbox control before anything is destroyed.
+      sendDeleteAccountVerification: async ({ user, url }) => {
+        const { subject, html } = deleteAccountEmail({ name: user.name, url });
+        await sendEmail({ to: user.email, subject, html });
+      },
+
+      // 1 hour, matching password reset — short on purpose. This is the most
+      // destructive action in the app; a link that stays live for a day is a
+      // day-long window on a forwarded or compromised mailbox. (Contrast the
+      // 7-day verification link, where the risk of expiry is real and the
+      // downside of a stale click is nil.)
+      deleteTokenExpiresIn: 60 * 60,
+
+      // Runs before the row is deleted on BOTH deletion paths — verified in
+      // better-auth's source. Must be before: the cascade takes the
+      // storageKeys with it. See purgeUserStorage.
+      beforeDelete: async (user) => {
+        await purgeUserStorage(user.id);
+      },
+
+      // afterDelete, not before: this records that erasure COMPLETED, so it
+      // must not be written for an attempt that then failed. The row
+      // deliberately outlives the user — see the AuditLog model comment for
+      // why that is both intentional and defensible.
+      afterDelete: async (user) => {
+        await recordAudit({
+          action: "ACCOUNT_DELETED",
+          actorUserId: user.id,
+          subjectUserId: user.id,
+          targetType: "user",
+          targetId: user.id,
+          metadata: { self_service: true },
+        });
       },
     },
   },

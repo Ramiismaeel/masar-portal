@@ -78,13 +78,16 @@ Any page added under `(app)` is protected by construction.
       end-to-end against real Google credentials, locally. **Still needed: the same
       `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` added to Vercel (preview + prod)** — only local
       `.env` has them so far.
-- [ ] **Phase 10** Visual identity — dark/light mode, imagery, animation, header/footer redesign
-      matching masar-center.de. **In progress**: brand colors + dark-mode toggle shipped for the
-      public pages (home, all `(auth)` pages). See "Visual identity" below. Still open: real
-      imagery (hero/category art is still placeholder), the wizard/dashboard/admin surfaces
-      (deliberately out of scope for this pass), and any animation.
-- [ ] **Phase 11** GDPR follow-through — self-service delete account, retention limits, audit log,
-      bulk ZIP export. (Was "Phase 8" before the roadmap split — renumbered, not dropped.)
+- [x] **Phase 10** Visual identity — real brand colours (blue/orange), dark/light mode + toggle,
+      header/footer redesign across home/`(auth)`/`(app)`, mobile drawer, checklist & upload UX,
+      form enhancements, loading states and page transitions. See "Visual identity" below and its
+      sub-sections. **Closed with two items deliberately carried out of the phase rather than
+      left blocking it** (see "Carried out of Phase 10" below): real imagery, and an `/admin`
+      design pass.
+- [x] **Phase 11** GDPR follow-through — self-service delete account, audit log, admin bulk ZIP
+      export, retention limits. All four shipped and verified live (see "Account deletion" and
+      "Audit log, export & retention" below). **One thing still needs Masar, not code**:
+      `DOCUMENT_RETENTION_DAYS` is a placeholder (180) and is a legal/business decision.
 - [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
 
 ## Immediate next steps
@@ -520,6 +523,238 @@ Cloudmersive scan → R2 → DB, all synchronous in one Server Action).
   exactly the count `loading.tsx` renders (1 heading + 1 section label + 3 cards × 5 blocks).
   Cleaned up the draft application that "Start application" created as a side effect of the test,
   and restored the theme cookie to light afterwards.
+
+### Carried out of Phase 10 (not dropped)
+Two items from the original Phase 10 description were deliberately closed *out* of the phase
+rather than left holding it open indefinitely:
+1. **Real imagery.** The home hero graphic and the four category icons are still hand-drawn inline
+   SVG placeholders. This is blocked on assets that do not exist — real photography or commissioned
+   illustration, and a decision from Masar about what the portal should show — not on code. Worth
+   picking up when those assets exist; flagged at every handover so far rather than quietly shipped
+   as if finished.
+2. **`/admin` design pass.** Never given one, in any pass. It inherits the new colour tokens for
+   free (buttons, cards, focus rings) so it is not visually broken, but it has no logo/header
+   treatment, no mobile drawer, and is still English-and-LTR-locked by deliberate earlier decision.
+   Staff-only and out of scope every time it came up; the reasoning still holds, but it should be
+   an explicit item rather than an implicit omission.
+
+## Account deletion (Phase 11, Aug 2026)
+First slice of Phase 11. Three decisions were Rami's, taken before any code: **hard delete** (not
+anonymise-and-retain), **admin-facing** bulk ZIP (an operational tool, not GDPR portability — so it
+is *not* part of this slice), and **delete-account first, alone** rather than all four Phase 11
+features at once.
+- **Hard delete, and why that's defensible here.** The alternative was anonymising and keeping a
+  stripped application row for German commercial-record retention (§257 HGB / §147 AO). Rejected
+  because of what this portal actually stores: passports, criminal-record extracts, medical
+  reports, checklist progress — applicant documents, not invoices or contracts. The commercial
+  record of the engagement lives in Masar's own accounting, not here. So erasure can be total, and
+  `schema.prisma`'s existing `onDelete: Cascade` on every relation does the database half already.
+- **Built on Better Auth's own `/delete-user`, after reading its source** (`api/routes/
+  update-user.mjs`) rather than trusting docs — the standing convention in this project. What that
+  read settled:
+  - It offers three verification paths, and the choice matters a lot. A **password** check
+    hard-fails every Google-only account (no credential row to verify against — and Phase 9 shipped
+    Google sign-in). The **fresh-session** fallback (any session under `freshAge`, default 1 day)
+    would let anyone holding an unlocked, still-signed-in phone permanently destroy someone's visa
+    application — and this file's own email-verification section already names shared/internet-café
+    devices as a real threat for exactly this user base. The **emailed token** is the only path
+    that covers both auth methods *and* proves mailbox control before anything is destroyed. Chose
+    that: `sendDeleteAccountVerification`, reusing the existing Resend + `emails/` template
+    pattern.
+  - `deleteTokenExpiresIn: 60 * 60` (1 hour), matching password reset rather than the 7-day
+    verification link. Deliberate asymmetry: a stale *verification* click is harmless, a stale
+    *deletion* link is a day-long window on a forwarded or compromised mailbox.
+  - **`beforeDelete` is the only correct place for R2 cleanup**, and this is the subtle part. The
+    cascade removes `Document` rows the instant the `User` goes — taking every `storageKey` with
+    it. Delete the row first and the files become unreachable orphans: still paid for, still
+    holding passports, and specifically *not* erased despite an erasure request. `purgeUserStorage`
+    (`src/lib/account-deletion.ts`) collects the keys and deletes the objects before that happens.
+    Verified in source that `beforeDelete` fires on **both** deletion paths (the direct POST and
+    the emailed-token callback), so there's no path that skips it.
+  - Storage deletion is `Promise.allSettled`, best-effort per object, matching the established
+    `deleteDocument`/`deleteApplication` pattern: the database is the source of truth for "does
+    this exist", so a failed R2 delete must never block the erasure the applicant asked for. Failed
+    counts are logged loudly enough to clean up by hand.
+  - The callback **requires a live session in the same browser** (`getSessionFromCtx`, then a check
+    that the token's value matches that session's user id — so a token can't delete a *different*
+    account). It fails *safely*: the session check runs **before** `consumeVerificationValue`, so
+    clicking the link signed-out does not burn it — sign in, click again, it still works. The
+    confirmation email says so explicitly.
+- **Where it lives**: a new `/account` page under `(app)` (name + email, read-only, then the
+  delete section). This also gave the mobile drawer its first real navigation item — which is
+  what Rami said the drawer was for ("useful later to add navigation to profile when created").
+  Linked from both the drawer and the desktop header. `/account-deleted` is the post-deletion
+  landing page and lives in `(auth)`, **not** `(app)`: by the time it renders the session is gone
+  and the cookie cleared, so an `(app)` page would bounce straight to `/login` and swallow the
+  confirmation — the same reasoning that put `/verify-email` there.
+- **Datenschutz §7 updated in the same pass.** It had promised self-service deletion in writing
+  since Phase 8 ("we do not yet offer... this is a planned feature"). That text is now false, so
+  both EN and AR were rewritten to describe what actually happens (email confirmation → total
+  erasure from database *and* document storage), while still stating plainly that automatic
+  time-based deletion is not implemented — that's the retention-limits item, still open.
+- **A real bug found and fixed while verifying, plus a testing lesson worth recording.** The drawer
+  needed to close when a nav link inside it is followed (an uncontrolled dialog has no idea the
+  router moved). First attempt put `onClick` on `<Button render={<Link/>}>`; it appeared not to
+  fire, so it was replaced with `Dialog.Close render={<Link/>}` — which *also* appeared not to
+  work. Both diagnoses were wrong: a **control test** (programmatically clicking the drawer's own
+  plain `<button>` X, which is certainly correct code) failed **identically**, proving synthetic
+  `.click()` and even hand-dispatched pointer-event sequences simply cannot drive Base UI's
+  dismissal handling. Every "still open" result was a testing artifact, not a defect. The **actual**
+  bug surfaced only from Base UI's own console error: `Dialog.Close` defaults `nativeButton` to
+  `true`, so rendering an `<a>` under it "removes native button semantics" — an accessibility
+  problem *and* the reason its click handling misbehaved. Fixed with `nativeButton={false}`;
+  the error is gone and a real click on a drawer nav link now closes the panel and navigates.
+  Lesson for next time: **when a UI test fails, run the control before believing the diagnosis** —
+  and treat a library's own console warnings as primary evidence.
+- **Fully executed end-to-end against a real disposable account** (`aboalinet6@gmail.com`, which
+  Rami signed in as and authorised for destruction — the earlier pass had verified only the
+  non-destructive half, since running it on the main account would have been irreversible).
+  Baseline captured first so "gone" could actually be proven, not assumed: 3 applications
+  (STUDENT/DRAFT, MEDICAL/DRAFT, JOB_SEEKER/NEEDS_REVISION), 6 documents, 3 sessions, 1 credential
+  account, and **all 6 R2 objects confirmed PRESENT via `HeadObjectCommand`** before starting.
+  Results, in order:
+  1. **Requesting deletion destroys nothing.** After clicking through to "Check your inbox", the
+     user, all 3 applications and all 6 documents were still intact — exactly one verification
+     token existed, expiring in 59 minutes (confirming `deleteTokenExpiresIn: 60 * 60`). This is
+     the property that makes an accidental click harmless.
+  2. **The emailed callback completed the deletion**, opened exactly as the email would construct
+     it (`/api/auth/delete-user/callback?token=…&callbackURL=/account-deleted`) and redirected to
+     the landing page.
+  3. **Erasure was total**: user gone by id *and* by email; applications 0; documents 0; sessions
+     0; accounts 0; verification token 0 (consumed, so the link is single-use); and — the part
+     that most needed proving — **6 of 6 R2 objects gone**, confirming `beforeDelete`/
+     `purgeUserStorage` ran before the cascade took the `storageKey`s with it. Had the hook been
+     wired even slightly wrong, those six files would have survived as unreachable orphans still
+     holding passports.
+  4. **Session teardown confirmed in the browser**: `/dashboard` immediately bounced to `/login`.
+  5. **No collateral damage**: the other real account (`rami.ismaeel4@gmail.com`, 3 applications)
+     was re-checked afterwards and is untouched.
+
+## Audit log, export & retention (Phase 11, Aug 2026)
+The remaining three Phase 11 items, built in that order deliberately: the audit log first, so the
+export and the retention job could record themselves from their first run rather than having
+logging retrofitted onto them later.
+
+### Audit log
+- **New `AuditLog` model with NO relations, and that is the whole design.** `actorUserId` /
+  `subjectUserId` are plain strings, not foreign keys. Every other relation in this schema uses
+  `onDelete: Cascade` — if these did too, deleting an account would erase the record that an admin
+  had opened that person's passport, destroying the trail at exactly the moment it matters. Keeping
+  the rows is defensible under Art. 17(3)(b) precisely *because* they contain no personal data:
+  only opaque ids that stop resolving to a person once that person is gone.
+- **`recordAudit` never throws.** An audit write failing must not roll back the thing it was
+  recording — refusing to save an approval because a log insert timed out is worse than the missing
+  line. It catches, logs loudly, and returns. This paid off immediately (see the stale-client
+  find below).
+- **What's recorded**: `DOCUMENT_DOWNLOADED`, `DOCUMENT_REVIEWED`, `APPLICATION_DECIDED`,
+  `APPLICATION_EXPORTED`, `ACCOUNT_DELETED`, `RETENTION_PURGE`. Metadata is deliberately
+  non-identifying — e.g. the review entry stores `hasNote: boolean`, **not** the note text, and
+  never a filename, name or email. Verified live by grepping the serialised rows for the real
+  email, real name and a real filename: none present.
+- **A security improvement fell out of this.** The admin review page used to mint a presigned R2
+  URL for *every* document at render time — 13 live 10-minute URLs per page load, whether or not
+  anyone opened a single file, and with no record of who opened what. Replaced with
+  `/admin/documents/[documentId]`, a route handler that re-checks `requireAdminSession` (a route
+  handler is its own public endpoint, same rule as Server Actions), writes the audit entry, and
+  only then mints a URL. Logged *before* handing out the URL, so a crash between the two can only
+  over-record access, never silently under-record it. Verified live: 13 links now point at the
+  route, and `r2.cloudflarestorage.com` no longer appears anywhere in the page HTML.
+
+### Admin bulk ZIP export
+- **`fflate`, not `archiver`.** archiver pulls 9 transitive dependencies and tar support this app
+  will never use; fflate has **zero** dependencies and streams. Consistent with the existing
+  preference for a raw `fetch` over the Cloudmersive SDK.
+- Streams rather than buffering: 13 documents × a 10 MB cap is ~130 MB, which is a bad thing to
+  hold in memory on a serverless function. Files are fetched one at a time and pushed into the
+  archive as they arrive, so peak memory is roughly one document. Entries use `ZipPassThrough`
+  (stored, not deflated) — these are already-compressed JPEGs and PDFs, so deflating them burns CPU
+  for essentially no size win.
+- **Zip-slip guarded.** `fileName` is whatever the applicant's device called the file, i.e.
+  untrusted: a name like `../../secrets.pdf` would become a path-traversal payload for whoever
+  extracts the archive. `safeEntryName` strips path separators, collapses dot-runs, removes a
+  leading dot and drops control characters. Entries are prefixed with the requirement code, with a
+  numeric suffix on collision.
+  - Worth recording: the control-character class was **silently mangled by an editing round-trip**
+    into `/[^@-^_^?]/g` — a negated class that would have stripped nearly every character and
+    destroyed every filename in the archive. Caught by reading the file back with `cat -A` rather
+    than trusting the edit. Rewritten programmatically as explicit ` -` escapes so
+    no literal control characters exist in the source to be mangled again.
+- A `manifest.txt` is included so the archive is self-describing once it has been emailed on and
+  separated from the portal.
+- Verified live: HTTP 200, `application/zip`, `Cache-Control: no-store, private`, 1.17 MB, valid
+  `PK` signature, and **14 central-directory entries = 13 documents + manifest**.
+
+#### Bug found by Rami: "check your internet connection" on a real download
+The first verification only ever used an in-page `fetch()`, which reads the whole body and hides a
+class of failure a real browser download exposes. Rami tried the actual link and got Chrome's
+generic network error. Diagnosis, in order:
+- **Ruled out first, cheaply**: no service worker was registered on localhost
+  (`getRegistrations()` empty), so the PWA's caching layer was not intercepting the download —
+  a plausible-sounding theory that turned out to be wrong, checked before acting on it.
+- **The real cause**: the JOB_SEEKER application's 5 documents have `storageKey`s pointing at
+  objects that no longer exist — the bucket-rename orphans already documented under "Admin
+  dashboard" (`S3_BUCKET` changed to `…-dev` after Phase 5). A `HeadObject` sweep across all four
+  applications confirmed it precisely: MEDICAL 13/13 present, both STUDENT 5/5 present,
+  **JOB_SEEKER 0/5 present**.
+- Why it presented as a *network* error rather than a server error: the missing object threw from
+  inside the `ReadableStream`, i.e. **after** the 200 and `Content-Type: application/zip` had
+  already been flushed. The browser had begun writing a download by then and cannot fall back to an
+  error page, so it aborts with a generic connection failure. One dead file killed the whole export
+  and explained nothing.
+- **Fix**: a `HeadObject` pre-flight over every document *before* any byte is sent. If anything is
+  missing, return **409** with a plain-text body naming the missing requirement codes and telling
+  the admin to ask for a re-upload. Failing the whole export is deliberate rather than skipping the
+  missing files: a gap means real data loss, and an archive quietly missing a passport could be
+  forwarded to an embassy as though complete. The audit entry also moved to *after* the pre-flight —
+  a blocked export granted access to nothing, so logging it as an export would have been a lie.
+- **A second "bug" that wasn't**: the STUDENT export returned a suspiciously tiny 1,793-byte ZIP.
+  Checked rather than assumed — those 5 documents are genuinely 68-byte `fresh-test.png` files, so
+  1,793 bytes is exactly right. No defect.
+- Re-verified after the fix, including a **real browser download** this time (not just `fetch`):
+  `masar-Medical-(D16)-Rami-Ismaeel.zip` landed in Downloads at 1,169,327 bytes, unzipped cleanly
+  to 14 entries — 13 documents at their correct individual byte counts plus a readable
+  `manifest.txt`. The broken application now returns a clear 409 instead of a corrupt download, and
+  the two healthy ones still return 200.
+- **Left as-is, flagged**: the JOB_SEEKER application's 5 orphaned `Document` rows still claim files
+  that do not exist, so its checklist shows them as uploaded. That is pre-existing dev-data debt
+  from the bucket rename, not something this change introduced — worth deleting those rows (or
+  re-uploading) if that application is used for further testing.
+
+### Retention limits
+- **Deletes the FILES, not the applications.** The application row is the small, non-sensitive
+  record that Masar handled this case and what was decided — staff need that to answer "did we work
+  with this person?". The passports, criminal-record extracts and medical reports attached to it
+  are the sensitive part, and they are what a storage limit (Art. 5(1)(e)) exists to remove.
+- Only `APPROVED`/`REJECTED` start the clock. `DRAFT`/`PENDING_REVIEW` are live work and are never
+  purged however old — an application sitting in the queue for a year is a backlog problem, not a
+  retention one.
+- **`DOCUMENT_RETENTION_DAYS = 180` IS A PLACEHOLDER NEEDING MASAR'S CONFIRMATION.** How long after
+  a decision the consultancy still needs an applicant's passport is a legal/business call, not an
+  engineering one. Whatever is chosen must also match what Datenschutz §7 tells applicants.
+- Runs from `/api/cron/retention` on a nightly Vercel Cron (`vercel.json`, 03:00). That endpoint has
+  no session — a cron invocation has no user — so `CRON_SECRET` is the only thing between the public
+  internet and a bulk document delete. Accordingly it **fails closed if the secret is unset**
+  (a missing env var must never silently disable the check), compares in constant time, and returns
+  404 rather than 401/403 so a scanner learns nothing.
+- Verified live: no-secret → 404, wrong-secret → 404, correct-secret → 200
+  `{"ok":true,"applicationsAffected":0,...}`. The real purge ran and correctly did nothing (28
+  documents before and after — nothing is 180 days old yet). To prove the cutoff actually *selects*
+  rather than just always returning zero, the same query was re-run read-only against a pretend
+  `now + 181 days`: it matched exactly 1 APPROVED application with 5 documents, while all 4
+  DRAFT/PENDING_REVIEW applications stayed excluded.
+- **`CRON_SECRET` was generated and added to local `.env` — it still needs adding to Vercel**
+  (preview + prod), or the nightly purge will silently never run.
+
+### A stale-Prisma-client trap worth remembering
+The first live test of the audit log recorded **zero rows** despite the download and export both
+succeeding. Cause: `prisma generate` had been run *after* the dev server booted, so the running
+process still held a client with no `auditLog` delegate — `prisma.auditLog` was `undefined` and
+`.create` threw. This is the "stale client" gotcha already documented under "Prisma 7 gotchas",
+showing up in a new disguise (not `P2022`, but `Cannot read properties of undefined`). Two things
+worth noting: `recordAudit`'s never-throw design behaved exactly as intended — the export still
+returned a valid 1.17 MB ZIP and the download still worked, with the failure logged loudly rather
+than breaking user-facing behaviour — and the fix was simply restarting the dev server, after which
+all three actions logged correctly on the first try.
 
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
