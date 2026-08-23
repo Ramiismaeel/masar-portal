@@ -1,23 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Dialog } from "@base-ui/react/dialog";
-import { Menu, X, ShieldUser } from "lucide-react";
+import { Menu, X, ShieldUser, CircleUser } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { cn } from "@/lib/utils";
 import type { Theme } from "@/lib/theme";
+
+/** Shared look for the drawer's navigation rows — a ghost Button, but
+ *  applied as classes so Dialog.Close can render the <Link> directly. */
+const navItemClass = cn(
+  buttonVariants({ variant: "ghost" }),
+  "w-full justify-start gap-2.5 px-3",
+);
 
 /**
  * The (app) header's mobile-only menu. Language stays directly in the
  * header on every breakpoint (Rami's call — it's a one-tap toggle used far
  * more often than the items below, and hiding it a tap deeper made it
  * harder to reach on the surface where it matters most: applicants reading
- * in their second language). Only sign out, dark mode, and the admin link
- * move into this slide-out panel below `sm`; the desktop row still renders
- * them inline (DashboardLayout).
+ * in their second language). Only navigation, dark mode, and sign out move
+ * into this slide-out panel below `sm`; the desktop row still renders them
+ * inline (DashboardLayout).
  */
 export function AppMobileMenu({
   isAdmin,
@@ -27,9 +36,13 @@ export function AppMobileMenu({
   theme: Theme;
 }) {
   const t = useTranslations("AppLayout");
+  // Controlled rather than uncontrolled so the nav links below can close the
+  // panel as they navigate — Base UI has no idea the router moved, so an
+  // uncontrolled dialog would sit open over the page it just navigated to.
+  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger
         render={
           <Button variant="outline" size="icon" aria-label={t("menu")} className="sm:hidden" />
@@ -62,18 +75,34 @@ export function AppMobileMenu({
           </div>
 
           <div className="flex flex-col items-stretch gap-1 pt-2">
-            {/* A plain ghost row, not an outlined button — this is
-                navigation, not an action, and shouldn't look like one. */}
+            {/* Plain ghost rows, not outlined buttons — these are
+                navigation, not actions, and shouldn't look like one. */}
+            {/* Nav rows are Dialog.Close rendered AS the link, so following
+                one also dismisses the panel — an uncontrolled dialog has no
+                idea the router moved, and would otherwise sit open on top of
+                the page it just navigated to.
+                `nativeButton={false}` is REQUIRED here and was found live:
+                Close defaults it to true, and rendering an <a> under that
+                default makes Base UI log an accessibility error AND silently
+                stop handling the click, so the drawer never closed. */}
+            <Dialog.Close
+              nativeButton={false}
+              render={<Link href="/account" />}
+              className={navItemClass}
+            >
+              <CircleUser className="size-4" aria-hidden="true" />
+              {t("account")}
+            </Dialog.Close>
+
             {isAdmin && (
-              <Button
-                variant="ghost"
+              <Dialog.Close
                 nativeButton={false}
                 render={<Link href="/admin" />}
-                className="w-full justify-start gap-2.5 px-3"
+                className={navItemClass}
               >
-                <ShieldUser aria-hidden="true" />
+                <ShieldUser className="size-4" aria-hidden="true" />
                 {t("admin")}
-              </Button>
+              </Dialog.Close>
             )}
 
             <ThemeToggle theme={theme} variant="menu-item" />

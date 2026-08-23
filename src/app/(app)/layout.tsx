@@ -63,6 +63,14 @@ export default async function DashboardLayout({
                 language + theme + admin + sign out in one unwrapped row was
                 genuinely too much for a phone width. */}
             <div className="hidden items-center gap-4 sm:flex">
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/account" />}
+              >
+                {t("account")}
+              </Button>
               {isAdmin && (
                 <Button
                   variant="outline"

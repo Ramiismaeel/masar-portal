@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Square } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Square, Download } from "lucide-react";
 
 import { prisma } from "@/lib/prisma";
 import { findCategory, isCategoryValue } from "@/lib/categories";
@@ -10,7 +10,6 @@ import {
   parseAnswers,
 } from "@/lib/wizard";
 import { requirementsFor, type Requirement } from "@/lib/checklists";
-import { getDocumentDownloadUrl } from "@/lib/r2";
 import { APPLICATION_STATUS_META } from "@/lib/application-status";
 import { DOCUMENT_REVIEW_STATUS_META } from "@/lib/document-review-status";
 import { DocumentReviewControl } from "@/components/admin/document-review-control";
@@ -58,15 +57,15 @@ export default async function AdminApplicationPage({
     application.documents.map((d) => [d.requirementCode, d]),
   );
 
-  // Presigned URLs are generated server-side, once, at render time — the
-  // bucket itself is never public. Only rows with an actual uploaded file
-  // need one.
+  // Links point at /admin/documents/[id], NOT at a presigned URL minted here.
+  // Rendering used to mint a live 10-minute URL for every document whether or
+  // not anyone opened it, and left no record of who opened what. The route
+  // handler logs the access and mints the URL on demand instead.
   const downloadUrls = new Map<string, string>(
-    await Promise.all(
-      application.documents.map(
-        async (d) => [d.requirementCode, await getDocumentDownloadUrl(d.storageKey)] as const,
-      ),
-    ),
+    application.documents.map((d) => [
+      d.requirementCode,
+      `/admin/documents/${d.id}`,
+    ]),
   );
 
   const status = APPLICATION_STATUS_META[application.status];
@@ -103,11 +102,26 @@ export default async function AdminApplicationPage({
             </p>
           </div>
 
-          <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
-          >
-            {status.labelEn}
-          </span>
+          <div className="flex shrink-0 items-center gap-3">
+            {application.documents.length > 0 && (
+              // A plain <a>, not <Link>: this is a file download, not a
+              // client-side route. Prefetching a ZIP export would both waste
+              // bandwidth and write a spurious "exported" audit entry.
+              <a
+                href={`/admin/applications/${application.id}/export`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                Export ZIP ({application.documents.length})
+              </a>
+            )}
+
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
+            >
+              {status.labelEn}
+            </span>
+          </div>
         </div>
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

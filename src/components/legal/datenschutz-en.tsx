@@ -165,11 +165,21 @@ export function DatenschutzEn() {
           We keep your account, application, and document data for as long
           as you have an active application with us, and for a reasonable
           period afterwards in case you need to reopen your case or for our
-          own record-keeping. We do not yet offer automatic deletion after a
-          fixed period or a self-service &quot;delete my account&quot;
-          option — this is a planned feature. Until then, you can ask us at
-          any time (Section 9) to delete your data, and we will do so unless
-          we are legally required to keep it.
+          own record-keeping.
+        </p>
+        <p>
+          You can delete your account yourself at any time, from the
+          &quot;Account&quot; page once signed in. We email you a link to
+          confirm, and once you open it your account, all of your
+          applications, and every document you uploaded are permanently
+          erased — from our database and from our document storage alike.
+          This cannot be undone.
+        </p>
+        <p>
+          We do not yet delete data automatically after a fixed period; that
+          is still a planned addition. You can also always ask us directly
+          (Section 9) to delete your data, and we will do so unless we are
+          legally required to keep it.
         </p>
       </section>
 

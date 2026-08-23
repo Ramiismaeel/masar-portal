@@ -132,6 +132,51 @@ model Document {
   @@map("documents")
 }
 
+enum AuditAction {
+  DOCUMENT_DOWNLOADED
+  DOCUMENT_REVIEWED
+  APPLICATION_DECIDED
+  APPLICATION_EXPORTED
+  ACCOUNT_DELETED
+  RETENTION_PURGE
+}
+
+/// Accountability trail (GDPR Art. 5(2) / Art. 30) — who touched whose
+/// personal data, and when. Chiefly staff access: this portal holds
+/// passports, criminal-record extracts and medical reports, so "which admin
+/// opened this file" is the question that actually needs answering later.
+///
+/// NOTE THE DELIBERATE ABSENCE OF RELATIONS. `actorUserId` / `subjectUserId`
+/// are plain strings, NOT foreign keys, specifically so that deleting a user
+/// does NOT cascade these rows away. If they were relations with the
+/// `onDelete: Cascade` used everywhere else in this schema, erasing an
+/// account would also erase the record that an admin had accessed that
+/// person's passport — destroying the audit trail exactly when it matters
+/// most. Retaining these entries after erasure is defensible under
+/// Art. 17(3)(b) precisely because they hold no personal data: only opaque
+/// ids that, once the user is gone, no longer resolve to a person.
+model AuditLog {
+  id        String      @id @default(uuid())
+  action    AuditAction
+  /// The admin (or system) that acted. Null for automated jobs.
+  actorUserId   String?
+  /// Whose data was touched. Kept for "show me everything about this person",
+  /// and intentionally left dangling once that person is deleted.
+  subjectUserId String?
+  /// "document" | "application" | "user" — plus its id. Strings, not FKs.
+  targetType String
+  targetId   String
+  /// Small, non-identifying context (decision made, file count, category).
+  /// Never put names, emails or file contents in here.
+  metadata Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([subjectUserId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
 model Session {
   id        String   @id
   expiresAt DateTime
