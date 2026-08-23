@@ -5,7 +5,14 @@ import { revalidatePath } from "next/cache";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 import { prisma } from "@/lib/prisma";
-import { r2, R2_BUCKET } from "@/lib/r2";
+import {
+  r2,
+  R2_BUCKET,
+  QUARANTINE_PREFIX,
+  getQuarantineUploadUrl,
+  getObjectBytes,
+  deleteObjectQuietly,
+} from "@/lib/r2";
 import { scanFileForViruses } from "@/lib/virus-scan";
 import { normalizeUpload } from "@/lib/normalize-upload";
 import { detectMimeType } from "@/lib/file-signatures";
@@ -22,17 +29,33 @@ import { loadOwnedApplication } from "@/lib/actions/wizard";
 
 export type UploadDocumentState = { error: string | null };
 
-export async function uploadDocument(
-  _prev: UploadDocumentState,
-  formData: FormData,
-): Promise<UploadDocumentState> {
+type OwnedApplication = NonNullable<
+  Awaited<ReturnType<typeof loadOwnedApplication>>
+>;
+
+type UploadTarget =
+  | { ok: true; application: OwnedApplication; requirementCode: string }
+  | { ok: false; error: string };
+
+/**
+ * The authorisation gate, shared by BOTH upload entry points.
+ *
+ * Every one of these checks has to be repeated on the finalise step even
+ * though the ticket step already ran them: the two are separate HTTP requests,
+ * and nothing stops a caller from skipping the first one entirely or replaying
+ * the second after the application's status has changed.
+ */
+async function resolveUploadTarget(formData: FormData): Promise<UploadTarget> {
   const application = await loadOwnedApplication(formData.get("applicationId"));
   if (!application) {
-    return { error: "Application not found." };
+    return { ok: false, error: "Application not found." };
   }
 
   if (!canUploadInStatus(application.status)) {
-    return { error: "This application is not open for uploads right now." };
+    return {
+      ok: false,
+      error: "This application is not open for uploads right now.",
+    };
   }
 
   const rawRequirementCode = formData.get("requirementCode");
@@ -40,23 +63,150 @@ export async function uploadDocument(
     typeof rawRequirementCode !== "string" ||
     !findRequirement(application.category, rawRequirementCode)
   ) {
-    return { error: "Unknown document type." };
-  }
-  const requirementCode = rawRequirementCode;
-
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Choose a file to upload." };
+    return { ok: false, error: "Unknown document type." };
   }
 
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    // Derived from the constant, not typed out — the two drifting apart is a
-    // small bug that tells the user something false.
+  return { ok: true, application, requirementCode: rawRequirementCode };
+}
+
+/**
+ * Step 1 of 2: hand the browser a one-time URL to PUT its file straight to R2.
+ *
+ * The file does NOT travel through this function — Vercel rejects any request
+ * body over 4.5 MB at the edge, before the function is invoked, so large
+ * documents cannot reach a Server Action at all. What this function does is
+ * *authorise* the upload: it decides who may write, what the object is called,
+ * and exactly how many bytes may be sent.
+ *
+ * The client's declared size is checked BEFORE signing and then bound into the
+ * signature, so R2 itself rejects a body of any other length. A client cannot
+ * talk its way past the limit by lying — the worst it can do is waste one
+ * ticket's worth of quarantine space, which the bucket lifecycle rule expires.
+ */
+export type UploadTicketState = {
+  error: string | null;
+  ticket: { uploadUrl: string; quarantineKey: string } | null;
+};
+
+export async function createUploadTicket(
+  _prev: UploadTicketState,
+  formData: FormData,
+): Promise<UploadTicketState> {
+  const target = await resolveUploadTarget(formData);
+  if (!target.ok) return { error: target.error, ticket: null };
+
+  const size = Number(formData.get("size"));
+  if (!Number.isInteger(size) || size <= 0) {
+    return { error: "Choose a file to upload.", ticket: null };
+  }
+
+  if (size > MAX_FILE_SIZE_BYTES) {
     const limitMb = Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024));
-    return { error: `File is too large — the limit is ${limitMb} MB.` };
+    return {
+      error: `File is too large — the limit is ${limitMb} MB.`,
+      ticket: null,
+    };
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
+  // The SERVER picks the key. If the client chose it, it could point at
+  // another applicant's object and overwrite their passport.
+  const quarantineKey = `${QUARANTINE_PREFIX}${target.application.id}/${randomUUID()}`;
+
+  try {
+    const uploadUrl = await getQuarantineUploadUrl(quarantineKey, size);
+    return { error: null, ticket: { uploadUrl, quarantineKey } };
+  } catch (error) {
+    console.error("createUploadTicket: could not sign upload URL", error);
+    return { error: "Could not start the upload. Please try again.", ticket: null };
+  }
+}
+
+/**
+ * Step 2 of 2: the browser reports its file has landed in quarantine; pull it
+ * back, check it, and promote it to its permanent location.
+ *
+ * The quarantine object is deleted on every path out of here — success,
+ * rejection, or crash — so an unscanned file never lingers.
+ */
+export async function finalizeUpload(
+  _prev: UploadDocumentState,
+  formData: FormData,
+): Promise<UploadDocumentState> {
+  const target = await resolveUploadTarget(formData);
+  if (!target.ok) return { error: target.error };
+
+  const { application, requirementCode } = target;
+
+  const quarantineKey = formData.get("quarantineKey");
+  const rawFileName = formData.get("fileName");
+  if (typeof quarantineKey !== "string" || typeof rawFileName !== "string") {
+    return { error: "Invalid request." };
+  }
+
+  // THE critical check in this flow. Without it, any signed-in user could pass
+  // someone else's quarantine key and have that person's document promoted
+  // into their own application — reading a stranger's passport. Binding the
+  // key to this application's id makes that impossible.
+  if (!quarantineKey.startsWith(`${QUARANTINE_PREFIX}${application.id}/`)) {
+    console.warn("[finalizeUpload] quarantine key did not match application", {
+      applicationId: application.id,
+      quarantineKey,
+    });
+    return { error: "Invalid request." };
+  }
+
+  const fileName = rawFileName.slice(0, 200);
+
+  try {
+    let bytes: Buffer;
+    try {
+      bytes = await getObjectBytes(quarantineKey);
+    } catch (error) {
+      console.error("finalizeUpload: could not read quarantined object", error);
+      return { error: "The upload did not complete. Please try again." };
+    }
+
+    if (bytes.length === 0) {
+      return { error: "Choose a file to upload." };
+    }
+
+    // Re-checked against the real object, not the client's earlier claim.
+    if (bytes.length > MAX_FILE_SIZE_BYTES) {
+      const limitMb = Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024));
+      return { error: `File is too large — the limit is ${limitMb} MB.` };
+    }
+
+    return await storeScannedDocument({
+      application,
+      requirementCode,
+      fileName,
+      bytes,
+    });
+  } finally {
+    // Always. A quarantine object that survives its finalise is an unscanned
+    // applicant document sitting in the bucket.
+    await deleteObjectQuietly(quarantineKey);
+  }
+}
+
+/**
+ * The one and only upload pipeline: validate the bytes, normalise them, scan
+ * them, store them, record them.
+ *
+ * Kept as a single function deliberately. Two copies of a security pipeline is
+ * how one of them quietly loses a check.
+ */
+async function storeScannedDocument({
+  application,
+  requirementCode,
+  fileName,
+  bytes,
+}: {
+  application: OwnedApplication;
+  requirementCode: string;
+  fileName: string;
+  bytes: Buffer;
+}): Promise<UploadDocumentState> {
 
   // The REAL type, read from the leading bytes. `file.type` is a string the
   // client supplies and can set to anything, so trusting it meant a renamed
@@ -66,15 +216,9 @@ export async function uploadDocument(
     return { error: "Only PDF, JPG, or PNG files are accepted." };
   }
 
-  if (mimeType !== file.type) {
-    // Not an error — browsers guess Content-Type from the extension and get
-    // it wrong innocently all the time. Worth a line in the log, because the
-    // other explanation is someone probing the upload.
-    console.warn("[uploadDocument] declared type did not match content", {
-      declared: file.type,
-      detected: mimeType,
-    });
-  }
+  // There is no client-declared Content-Type to compare against any more: the
+  // file arrives from R2, not from a form field, so the magic bytes above are
+  // the only statement about its type — which is exactly the control we want.
 
   // Upload pipeline order (docs/roadmap.md), now with a normalise step:
   //   validate → normalize → scan → store
@@ -110,7 +254,7 @@ export async function uploadDocument(
     });
     scanStatus = "SKIPPED";
   } else {
-    const scan = await scanFileForViruses(storedBytes, file.name);
+    const scan = await scanFileForViruses(storedBytes, fileName);
 
     if (scan.status === "infected") {
       console.warn("[uploadDocument] infected file rejected", {
@@ -182,7 +326,7 @@ export async function uploadDocument(
       create: {
         applicationId: application.id,
         requirementCode,
-        fileName: file.name,
+        fileName,
         storageKey,
         mimeType: storedMimeType,
         // Size of what was actually stored, not what was uploaded — after
@@ -193,7 +337,7 @@ export async function uploadDocument(
         reviewStatus: "PENDING",
       },
       update: {
-        fileName: file.name,
+        fileName,
         storageKey,
         mimeType: storedMimeType,
         sizeBytes: storedBytes.length,

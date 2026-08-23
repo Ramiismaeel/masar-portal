@@ -4,7 +4,35 @@
  * it likes, so every value here is re-checked in the upload Server Action.
  */
 
+/**
+ * Largest file a user may CHOOSE. Images are shrunk in the browser before
+ * being sent, so a 10 MB photo is fine — what actually travels is a few
+ * hundred KB. This is the input limit, not the transport limit; see
+ * MAX_UPLOAD_REQUEST_BYTES below for the one that constrains the network.
+ */
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Largest file that can actually be SENT to a Server Action on Vercel.
+ *
+ * Vercel rejects any function request body over **4.5 MB** at the edge with
+ * 413 `FUNCTION_PAYLOAD_TOO_LARGE`, before the request reaches our code. It is
+ * documented as a hard platform limit and is NOT configurable —
+ * `serverActions.bodySizeLimit` in next.config.ts cannot raise it, because
+ * that setting is enforced inside the function that never gets invoked.
+ *
+ * This does not reproduce locally: `next dev` has no such cap, which is why a
+ * 5.5 MB PDF uploaded fine on localhost and failed on preview.
+ *
+ * 4 MB, not 4.5, leaves room for multipart/form-data boundaries and the other
+ * fields in the request. Enforced CLIENT-side, because the point is to fail
+ * with a clear message instead of letting the platform return an error page
+ * the app cannot catch or explain.
+ *
+ * Raising this requires uploading directly to R2 with a presigned URL and
+ * bypassing the function entirely — see docs/roadmap.md.
+ */
+export const MAX_UPLOAD_REQUEST_BYTES = 4 * 1024 * 1024;
 
 /**
  * Largest file the virus scanner will accept, in bytes.

@@ -1,135 +1,32 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Upload, Loader2 } from "lucide-react";
 
 import { shrinkImage } from "@/lib/shrink-image";
-
-import {
-  uploadDocument,
-  type UploadDocumentState,
-} from "@/lib/actions/documents";
+import { MAX_FILE_SIZE_BYTES } from "@/lib/uploads";
+import { createUploadTicket, finalizeUpload } from "@/lib/actions/documents";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const EMPTY_STATE: UploadDocumentState = { error: null };
-
 /**
- * A real, clearly-labelled button — not a bare native file input. The input
- * itself is `sr-only` (in the layout/focus tree, just not painted) rather
- * than `hidden` (display: none, which would drop it from keyboard/tab
- * order): the label is what's visible and styled as a button, but Tab still
- * reaches the actual input and Space/Enter still opens the file picker.
+ * Upload happens in three steps rather than one form submission, because the
+ * file never travels through a Server Action:
+ *
+ *   1. ask the server for a one-time signed URL  (tiny request)
+ *   2. PUT the file straight to R2               (the big one — no Vercel)
+ *   3. tell the server it landed; it scans and promotes it
+ *
+ * Step 2 is what makes large files possible at all: Vercel rejects any
+ * function request body over 4.5 MB at the edge, so an 8 MB PDF can never
+ * reach a Server Action. Going directly to storage sidesteps that completely.
+ *
+ * Because this is a sequence and not a single submit, it uses explicit state
+ * instead of useActionState/useFormStatus.
  */
-function FileTrigger({
-  id,
-  label,
-  primary,
-}: {
-  id: string;
-  label: string;
-  primary: boolean;
-}) {
-  const { pending } = useFormStatus();
-  const [preparing, setPreparing] = useState(false);
-  const t = useTranslations("Checklist");
-
-  const busy = pending || preparing;
-
-  /**
-   * Shrinks an image before submitting, then swaps it back into the input so
-   * the form sends the smaller file.
-   *
-   * `input.files` looks read-only but is assignable from a DataTransfer's
-   * FileList — that is the supported way to replace a file input's contents.
-   */
-  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    // Captured BEFORE the first await. React resets `event.currentTarget` to
-    // null once the handler returns, and an async handler returns at its
-    // first await — so reading it afterwards would throw.
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file) return;
-
-    setPreparing(true);
-    try {
-      const prepared = await shrinkImage(file);
-
-      if (prepared !== file) {
-        const transfer = new DataTransfer();
-        transfer.items.add(prepared);
-        input.files = transfer.files;
-      }
-    } finally {
-      setPreparing(false);
-    }
-
-    input.form?.requestSubmit();
-  }
-
-  return (
-    <>
-      {/* Input comes first so the label below can react to its focus state
-          via the `peer` mechanism — a keyboard user tabbing to this (sr-only,
-          not display:none, so still focusable) input needs to SEE that focus
-          land somewhere, and the label is the only visible element here. */}
-      <input
-        id={id}
-        type="file"
-        name="file"
-        // Client-side accept is a UX convenience only — the Server Action
-        // re-validates the actual Content-Type, which is the real control.
-        accept="application/pdf,image/jpeg,image/png"
-        required
-        // Deliberately `pending`, NOT `busy`. Disabling this input while
-        // `preparing` is true breaks the upload: a disabled control is
-        // excluded from FormData, and because React state updates are
-        // asynchronous, the input is still disabled in the DOM at the moment
-        // requestSubmit() runs — so the Server Action receives a form with no
-        // file and rejects it with "Choose a file to upload."
-        // Nothing is lost by leaving it enabled: the input is sr-only and the
-        // label below already has pointer-events-none while busy.
-        disabled={pending}
-        aria-label={label}
-        // Submits the instant a file is chosen — no separate "Upload" tap.
-        // There's nothing to review first (no preview, nothing partial worth
-        // pausing on), so the extra step was only friction — worse on a
-        // phone, and worse still for someone new to this kind of form.
-        onChange={handleChange}
-        className="peer sr-only"
-      />
-
-      <label
-        htmlFor={id}
-        className={cn(
-          buttonVariants({
-            variant: primary ? "default" : "outline",
-            size: primary ? "default" : "sm",
-          }),
-          "w-full cursor-pointer peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
-          busy && "pointer-events-none opacity-50",
-        )}
-      >
-        {busy ? (
-          <>
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            {/* Shrinking a 12 MP photo takes a moment on a phone, and it
-                happens before any upload starts — so it needs its own label
-                rather than silently sitting on "Uploading…". */}
-            {preparing ? t("preparing") : t("uploading")}
-          </>
-        ) : (
-          <>
-            <Upload className="size-4" aria-hidden="true" />
-            {label}
-          </>
-        )}
-      </label>
-    </>
-  );
-}
+type Phase = "idle" | "preparing" | "uploading" | "checking";
 
 export function UploadControl({
   applicationId,
@@ -141,29 +38,146 @@ export function UploadControl({
   /** false for a first-time slot, true once something is already there. */
   isReplace: boolean;
 }) {
-  const [state, formAction] = useActionState(uploadDocument, EMPTY_STATE);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
   const t = useTranslations("Checklist");
 
-  return (
-    <form action={formAction} className="flex flex-col gap-1.5">
-      <input type="hidden" name="applicationId" value={applicationId} />
-      <input type="hidden" name="requirementCode" value={requirementCode} />
+  const busy = phase !== "idle";
+  const id = `upload-${requirementCode}`;
 
-      <FileTrigger
-        id={`upload-${requirementCode}`}
-        label={isReplace ? t("replace") : t("upload")}
-        // The empty-slot case is the one thing on the row that needs a
-        // user's attention — a full-width primary button. Once something is
-        // already uploaded, replacing it is a lower-emphasis secondary
-        // action next to the filename, not the row's main call to action.
-        primary={!isReplace}
+  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    // Captured BEFORE the first await: React resets `event.currentTarget` to
+    // null once the handler returns, and an async handler returns at its first
+    // await, so reading it later would throw.
+    const input = event.currentTarget;
+    const chosen = input.files?.[0];
+    if (!chosen) return;
+
+    setError(null);
+
+    try {
+      setPhase("preparing");
+      // Shrinking is what keeps a phone photo under the virus scanner's size
+      // limit, so it still matters even though transport no longer caps us.
+      const file = await shrinkImage(chosen);
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        const limitMb = Math.floor(MAX_FILE_SIZE_BYTES / (1024 * 1024));
+        setError(t("tooLargeToSend", { limit: limitMb }));
+        return;
+      }
+
+      const ticketForm = new FormData();
+      ticketForm.set("applicationId", applicationId);
+      ticketForm.set("requirementCode", requirementCode);
+      ticketForm.set("size", String(file.size));
+
+      const ticketState = await createUploadTicket(
+        { error: null, ticket: null },
+        ticketForm,
+      );
+
+      if (!ticketState.ticket) {
+        setError(ticketState.error ?? t("uploadFailed"));
+        return;
+      }
+
+      setPhase("uploading");
+      // No content-length header set by hand — browsers forbid that and set it
+      // themselves. It matches because the server signed for exactly
+      // `file.size`; R2 rejects any other length with a 403.
+      const put = await fetch(ticketState.ticket.uploadUrl, {
+        method: "PUT",
+        body: file,
+      });
+
+      if (!put.ok) {
+        console.error("[upload] R2 PUT failed", put.status, put.statusText);
+        setError(t("uploadFailed"));
+        return;
+      }
+
+      setPhase("checking");
+      const finalizeForm = new FormData();
+      finalizeForm.set("applicationId", applicationId);
+      finalizeForm.set("requirementCode", requirementCode);
+      finalizeForm.set("quarantineKey", ticketState.ticket.quarantineKey);
+      finalizeForm.set("fileName", file.name);
+
+      const result = await finalizeUpload({ error: null }, finalizeForm);
+
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      // The action revalidated the path, but this was a direct call rather
+      // than a form submission, so nothing re-rendered on its own.
+      router.refresh();
+    } catch (cause) {
+      console.error("[upload] unexpected failure", cause);
+      setError(t("uploadFailed"));
+    } finally {
+      setPhase("idle");
+      // Clear the input so picking the SAME file again still fires `change`.
+      input.value = "";
+    }
+  }
+
+  const busyLabel =
+    phase === "preparing"
+      ? t("preparing")
+      : phase === "checking"
+        ? t("checking")
+        : t("uploading");
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* Input first so the label can react to its focus state via `peer` —
+          a keyboard user tabbing to this sr-only (not display:none, so still
+          focusable) input needs to SEE focus land somewhere. */}
+      <input
+        id={id}
+        type="file"
+        // A UX convenience only; the server re-derives the real type from the
+        // file's magic bytes and trusts nothing sent from here.
+        accept="application/pdf,image/jpeg,image/png"
+        disabled={busy}
+        aria-label={isReplace ? t("replace") : t("upload")}
+        onChange={handleChange}
+        className="peer sr-only"
       />
 
-      {state.error && (
+      <label
+        htmlFor={id}
+        className={cn(
+          buttonVariants({
+            variant: isReplace ? "outline" : "default",
+            size: isReplace ? "sm" : "default",
+          }),
+          "w-full cursor-pointer peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
+          busy && "pointer-events-none opacity-50",
+        )}
+      >
+        {busy ? (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            {busyLabel}
+          </>
+        ) : (
+          <>
+            <Upload className="size-4" aria-hidden="true" />
+            {isReplace ? t("replace") : t("upload")}
+          </>
+        )}
+      </label>
+
+      {error && (
         <p role="alert" className="text-xs text-destructive">
-          {state.error}
+          {error}
         </p>
       )}
-    </form>
+    </div>
   );
 }

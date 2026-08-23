@@ -1260,6 +1260,58 @@ now. Please try again shortly."*
   React state updates are asynchronous the input was *still* disabled in the DOM when
   `requestSubmit()` ran — so the action received a form with no file and answered "Choose a file
   to upload." The input must stay enabled; only the label is styled as busy.
+- **Vercel's 4.5 MB request-body limit is a HARD platform ceiling** (found on preview, 23 Aug 2026:
+  a 5.5 MB PDF returned 413 `FUNCTION_PAYLOAD_TOO_LARGE` and dumped the user on a platform error
+  page). It is rejected at the edge *before* the function runs, so
+  `serverActions.bodySizeLimit: "12mb"` in `next.config.ts` is powerless — that setting is enforced
+  inside a function which never gets invoked. **It does not reproduce locally**: `next dev` has no
+  such cap, which is exactly why this passed every localhost test.
+  - `MAX_UPLOAD_REQUEST_BYTES = 4 MB` (headroom under 4.5 for multipart overhead) is now checked
+    **client-side, after shrinking**, so an oversized file produces a real message instead of an
+    uncatchable platform error. `MAX_FILE_SIZE_BYTES` (10 MB) remains the *input* limit — a 10 MB
+    photo is still fine, because what travels is the shrunk few-hundred-KB version.
+  - Note the limits now interact: scan cap 3 MB < transport cap 4 MB. For PDFs (never shrunk) the
+    scan cap binds first, so **if large PDFs are switched from `SKIPPED` to rejected, the Vercel
+    ceiling stops mattering for them entirely.**
+  - **Resolved by presigned direct-to-R2 upload (24 Aug 2026).** The file no longer travels through
+    a Server Action at all, so the 4.5 MB ceiling is gone.
+
+### Presigned direct-to-R2 upload (24 Aug 2026)
+Three steps, replacing the single `uploadDocument` form submission:
+
+1. `createUploadTicket` — authorises and returns a signed PUT URL. The file is NOT here.
+2. Browser PUTs straight to `quarantine/{applicationId}/{uuid}` in R2. No Vercel involved.
+3. `finalizeUpload` — fetches the object back, runs the pipeline, promotes it, deletes quarantine.
+
+- **The function still runs; it just stops carrying bytes.** It decides *who* may write, *what the
+  object is called*, and *how many bytes* may be sent. A browser can never be trusted with any of
+  those: without step 1 anyone could write into anyone's folder, and if the client chose the key it
+  could overwrite another applicant's passport.
+- **`ContentLength` is signed, and R2 enforces it.** Verified against the real bucket: including it
+  puts `content-length` into `SignedHeaders`, and a 2048-byte body against a 1024-byte signature
+  returns **403**. So an authenticated user can upload exactly the number of bytes the server
+  approved — the "fill the bucket with a huge file" risk is closed at the storage layer, not by
+  hoping the client is honest.
+- **`ContentType` is NOT bound** — R2 accepted a mismatched content-type with a 200 in the same
+  test. Binding it would give false confidence. The real control is unchanged: magic bytes are read
+  server-side and we set the ContentType ourselves when promoting.
+- **The IDOR guard is the load-bearing check in `finalizeUpload`**: the quarantine key must start
+  with `quarantine/{thisApplicationId}/`. Without it any signed-in user could pass someone else's
+  quarantine key and have that person's passport promoted into their own application.
+- Every check is re-run in step 3. Steps 1 and 3 are separate HTTP requests; nothing stops a caller
+  skipping step 1 or replaying step 3 after the application's status has changed.
+- Both entry points share **one** pipeline (`storeScannedDocument`). Two copies of a security
+  pipeline is how one of them quietly loses a check.
+- The quarantine object is deleted in a `finally`, on every path out — success, rejection or throw.
+
+**Two Cloudflare dashboard settings are REQUIRED and cannot be done from code:**
+1. **CORS on the bucket** — allow `PUT` from `http://localhost:3000`, the Vercel preview domain and
+   production, with `content-type` in AllowedHeaders. The browser sends a preflight because
+   `application/pdf` is not a CORS-safelisted Content-Type value. Without this every upload fails in
+   the browser (the Node probe passed only because Node does not enforce CORS).
+2. **Lifecycle rule expiring `quarantine/` after 1 day** — abandoned uploads (closed tab, lost
+   connection, failed scan) are real applicant documents. Without expiry they are kept forever:
+   a storage leak and a GDPR problem.
 - **Still open:** `datenschutz-{en,ar}.tsx` claim *"automatic malware scanning of every uploaded
   file before it is stored"*. That was true while unscannable files were rejected; storing
   `SKIPPED` files makes it **false**. §11 and the Cloudmersive entry must be reworded before this
