@@ -16,7 +16,7 @@ function ConfirmButton() {
   const { pending } = useFormStatus();
   const t = useTranslations("Checklist");
   return (
-    <Button type="submit" variant="destructive" disabled={pending}>
+    <Button type="submit" variant="destructive" loading={pending}>
       {pending ? t("deleting") : t("deleteApplicationConfirm")}
     </Button>
   );

@@ -389,6 +389,138 @@ Four small, concrete asks from Rami, all in the wizard's identity step and the `
   hint text renders; confirmed the dashboard header shows the logo. Test applications deleted
   afterward, no leftover data. `npm run typecheck` / `npm run lint` clean throughout.
 
+### `(app)` header mobile menu (same day)
+Even after the last round, `(app)/layout.tsx` was still the one header never given a mobile
+treatment — logo, language, admin link, user's name, and sign out all crammed into one unwrapped
+flex row. On a phone that's genuinely too much for one line and wraps badly, which is what Rami
+actually reported.
+- **Dropped the user's name from the header entirely** — desktop and mobile both, not just hidden
+  below `sm`. It was redundant real estate: the dashboard body already says "Welcome, {name}."
+  Fewer items to fit changes what the header even needs to solve.
+- **Everything else moved into a slide-out drawer, mobile only.** Desktop (`sm` and up) keeps the
+  original inline row (language, admin link, sign out) — there's room, no reason to change what
+  isn't broken there. Below `sm`, those three collapse into a hamburger trigger
+  (`src/components/app-mobile-menu.tsx`) that opens a panel sliding in from the *end* edge.
+  Deliberately scoped to just those three items — no placeholder Profile/Blog/Contact-us links
+  added yet (Rami's call, over adding them now): a menu entry pointing nowhere real is worse than
+  a short menu, and this is exactly the extensibility point those get added to once they're real
+  pages, without touching the header again.
+- **Built on `@base-ui/react`'s `Drawer` primitive at first pass, then switched to `Dialog`.**
+  Base UI genuinely ships both, and `Drawer` looked like the obvious name match — but reading its
+  actual type defs (`DrawerSwipeDirection`, `DrawerSnapPoint`, `DrawerHandle`,
+  `virtual-keyboard-provider`) showed it's built for swipeable bottom sheets (snap points, drag
+  handles), not a side-sliding nav panel, and there's no bundled usage example or CSS to check
+  animation classes against — real risk of shipping something subtly broken with no way to verify
+  it against a reference. `Dialog` has the identical part shape (Root/Trigger/Portal/Backdrop/
+  Popup/Close/Title) with none of that bottom-sheet-specific complexity, styled as a slide-in
+  panel by hand (`fixed inset-y-0 end-0`, `transition-transform`, driven by Base UI's own
+  `data-open`/`data-closed`/`data-starting-style`/`data-ending-style` presence attributes — same
+  Tailwind arbitrary-attribute-selector mechanism, `data-[open]:`/`data-[starting-style]:` etc.).
+  `rtl:` variants flip the closed-state translate direction (`translate-x-full` in LTR pushes the
+  end-anchored panel off the right edge; RTL needs `-translate-x-full` to push it off the left
+  edge instead) — same convention as the icon-flipping already used elsewhere in this app
+  (`rtl:-scale-x-100`).
+- A worthwhile side note on Android/Play Store readiness, since Rami asked directly: this project
+  already has a real installable PWA (Phase 7 — manifest, service worker, offline fallback), and
+  the standard path from there to the Play Store is a TWA (Trusted Web Activity) — a thin native
+  wrapper via Google's Bubblewrap CLI, not a rewrite. A bottom sheet (which is what Base UI's
+  `Drawer` primitive is actually built for) would have been the more Android-Material-idiomatic
+  choice over a side drawer — worth reconsidering once there's a real reason to invest in wiring
+  up `Drawer` correctly (e.g. an actual TWA wrapper in progress), rather than now, working from
+  type defs alone with no way to verify the result. A bottom tab bar was considered and set aside
+  for the same "not enough top-level destinations yet" reason as the placeholder-links question
+  above — revisit once Profile and a couple more real sections exist.
+- Verified live, including RTL: forced the mobile trigger visible (this session's browser
+  automation can't actually shrink the viewport below ~1000px — same `resize_window` limitation
+  noted earlier in this file — so verification here means removing `sm:hidden`/forcing `sm:flex`
+  off via the console, not a real narrow-viewport screenshot) and confirmed the panel opens
+  sliding in from the end edge with a dimmed backdrop, the correct three items render as full-width
+  buttons, backdrop-click dismiss works, then switched the language toggle *from inside the open
+  drawer* and confirmed live in Arabic that the panel switches sides correctly (slides in from the
+  left, title/close-button/item alignment all mirror correctly) before switching back to English.
+
+### Mobile menu refinements — flags, placement, admin as a link (same day)
+One more round on the drawer above, all from a closer look at it in the browser.
+- **Language moved back OUT of the drawer, into the header directly, on every breakpoint.**
+  Rami's call over leaving it in the drawer: it's a one-tap toggle used far more than the other
+  three items, especially by applicants reading the app in their second language — burying it a
+  tap deeper than sign out/admin/theme was the wrong trade. `(app)/layout.tsx`'s header row is now
+  `Logo | LocaleSwitcher, [rest]` — the switcher sits outside both the desktop-only `sm:flex` row
+  and `AppMobileMenu`, so it renders identically at every width; only sign out/admin/theme still
+  differ per breakpoint.
+- **Real flag icons, not emoji — found broken live, not anticipated.** First pass used 🇬🇧/🇸🇾
+  emoji. Confirmed live on this session's own machine (Windows) that the Syria flag emoji has no
+  glyph and silently falls back to rendering the bare two-letter region code — "SY Arabic" in the
+  button, reading as a bug, not a flag. Replaced with real inline SVGs
+  (`src/components/flag-icon.tsx`): a simplified Union Jack (diagonal/cross stripes centered rather
+  than historically offset — a standard simplification at icon size) and the current Syrian flag
+  (adopted 2024: green/white/black bands, three red stars — hand-built with computed 5-point-star
+  path coordinates, not a placeholder). Same flag *pairing* as before — checked live on
+  masar-center.de's own mobile menu, which uses this exact UK+Syria pairing (plus German, which
+  this app doesn't need) — just real graphics instead of text glyphs that may or may not exist on
+  a given OS/browser.
+- **Admin restyled as a plain ghost row, not an outlined button** — a `ShieldUser` icon + text,
+  `variant="ghost"` (no border, subtle hover background only), visually reading as navigation
+  rather than an action. A visible divider now separates it and the theme toggle (navigation/state,
+  grouped together) from sign out below (the one destructive/exit action, kept as the bordered
+  button it already was) — a small hierarchy cue for what happens if you tap each one.
+- **Theme toggle gained a second presentation rather than a second component.** The state
+  (`useTransition`, the `setTheme` Server Action call, `router.refresh()`) only needs to exist
+  once; `ThemeToggle` now takes an optional `variant: "icon" | "menu-item"` — `"icon"` is the
+  existing compact button (home/auth headers, the `(app)` desktop row), `"menu-item"` is a
+  full-width labelled row ("Switch to dark/light mode") for the drawer, where an unlabelled
+  icon-only button would have been the one item on the panel with no visible text.
+- Verified live end-to-end, light and dark, both languages: the UK flag and the new Syria flag
+  (green/white/black, three visible stars) both render as real graphics in the header on every
+  breakpoint; opened the mobile drawer and confirmed Admin now reads as a link-style row with a
+  divider before Sign out; toggled dark mode *from inside the open drawer* and watched it apply
+  instantly (icon swaps moon→sun, label updates to "Switch to light mode", the whole page behind
+  the backdrop visibly goes dark) — then toggled back to light before finishing.
+
+### Pending-state UI: spinners, route skeletons, page transitions (Aug 2026)
+Rami: login / signup / upload / submit "take some time," with no feedback while they do. This
+matters more here than in a typical app — the roadmap's own audience note is applicants in Syria,
+often on mobile data, and the upload path in particular is genuinely slow by design (validate →
+Cloudmersive scan → R2 → DB, all synchronous in one Server Action).
+- **The problem was uniform, so the fix is one component.** Every pending button in the app used
+  the same pattern: `disabled={pending}` plus a swapped label (`"Log in"` → `"Logging in…"`). On a
+  fast connection that's invisible; on a slow one a label that only changes text reads as "nothing
+  happened," and people tap again. Rather than hand-rolling a spinner per form, `Button` (the
+  shared `ui/` primitive) gained a `loading` prop that renders a `Loader2` spinner before the
+  label, sets `disabled`, and sets `aria-busy` — so screen-reader users get the state too, not
+  just sighted ones. Converted every caller: login, signup, Google sign-in, forgot-password,
+  reset-password, resend-verification, sign-out, both wizard steps, start-application,
+  submit-application, delete-application. `delete-document`'s confirm is a bare `<button>` (a tiny
+  text link, not a `Button`) and got the same treatment inline.
+  - Deliberately documented on the prop itself: **don't** pass `loading` alongside
+    `render={<Link/>}`. An anchor has no disabled state, so it would spin while staying clickable
+    — a worse lie than no spinner. All the `render={<Link/>}` buttons in this app are plain
+    navigation and were left alone.
+- **Route-level skeletons, not just button spinners.** A button spinner covers "I submitted
+  something"; it does nothing for "I tapped View checklist and the page is fetching from Neon."
+  Added `src/app/(app)/loading.tsx` — Next renders it instantly on navigation while the server
+  component awaits its queries. One file covers every nested `(app)` route that doesn't define its
+  own. The shape deliberately mirrors the dashboard/checklist layout (heading + stack of bordered
+  rows with an icon, two text lines, and a status pill) rather than being a generic centered
+  spinner, so the page appears to *fill in* rather than *replace*. New `ui/skeleton.tsx` is the
+  pulsing block primitive.
+- **Soft page transitions.** `(app)`'s `<main>` and `(auth)`'s card wrapper now carry
+  `animate-in fade-in slide-in-from-bottom-1 duration-300` (the `tw-animate-css` utilities wired in
+  during the checklist pass). Both are guarded with `motion-reduce:animate-none` — these are
+  decorative, so anyone who's asked their OS for reduced motion gets none of it. The button
+  spinners deliberately do **not** carry that guard: a spinner is information, not decoration, and
+  silently freezing it would remove the very feedback this change exists to add.
+- **Verified live, and not by screenshot** — a screenshot round-trip is ~1s, slower than most of
+  these actions, so trying to photograph a spinner mid-flight was unreliable and kept missing.
+  Used a `MutationObserver` in the page instead, which is deterministic: clicking "Start
+  application" recorded `aria-busy="true"`, `disabled: true`, `hasSpinner: true` (a real
+  `svg.animate-spin` in the DOM) and the label swapped to `"Creating…"` — proving the shared
+  `Button` code path every converted caller uses. Same technique for the route skeleton: observed
+  **17** `[data-slot="skeleton"]` blocks appear during a client-side nav to `/dashboard`, which is
+  exactly the count `loading.tsx` renders (1 heading + 1 section label + 3 cards × 5 blocks).
+  Cleaned up the draft application that "Start application" created as a side effect of the test,
+  and restored the theme cookie to light afterwards.
+
 ## i18n (Phase 7, Aug 2026)
 - **Library: `next-intl`, no `[locale]` route segment.** Locale lives in a cookie
   (`src/i18n/locale.ts`'s `LOCALE_COOKIE`), read server-side in `src/i18n/request.ts`. Same URL

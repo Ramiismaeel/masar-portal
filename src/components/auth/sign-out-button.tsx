@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
-export function SignOutButton() {
+export function SignOutButton({ className }: { className?: string }) {
   const t = useTranslations("Auth.SignOut");
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -23,7 +23,8 @@ export function SignOutButton() {
       variant="outline"
       size="sm"
       onClick={handleSignOut}
-      disabled={isSigningOut}
+      loading={isSigningOut}
+      className={className}
     >
       {isSigningOut ? t("signingOut") : t("button")}
     </Button>
