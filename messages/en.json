@@ -86,6 +86,7 @@
     "fullNameLatinPlaceholder": "As printed in your passport",
     "fullNameLatinHint": "Exactly as it appears in the machine-readable line of your passport.",
     "phone": "Phone number",
+    "phoneHint": "Include the country code, e.g. +963 912 345 678.",
     "passportNumber": "Passport number",
     "passportExpiry": "Passport expiry date",
     "saveAndContinue": "Save & continue",

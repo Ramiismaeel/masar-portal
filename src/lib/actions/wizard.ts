@@ -11,7 +11,9 @@ import {
   STEP_QUESTION,
   hasQuestionStep,
   isInstructionLanguage,
+  isLatinName,
   isMedicalProfession,
+  isPhoneNumber,
   needsSensitiveDataConsent,
   parseAnswers,
   totalSteps,
@@ -67,8 +69,6 @@ function afterWizardPath(applicationId: string) {
 // Step 0 — identity
 // ---------------------------------------------------------------------------
 
-const NAME_PATTERN = /^[A-Za-z][A-Za-z\s.'-]{2,79}$/;
-const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,19}$/;
 const PASSPORT_PATTERN = /^[A-Z0-9]{5,15}$/;
 
 export async function saveIdentityStep(
@@ -99,12 +99,12 @@ export async function saveIdentityStep(
     .toUpperCase();
   const passportExpiryRaw = String(formData.get("passportExpiry") ?? "").trim();
 
-  if (!NAME_PATTERN.test(fullNameLatin)) {
+  if (!isLatinName(fullNameLatin)) {
     fieldErrors.fullNameLatin =
       "Enter your full name in Latin letters, exactly as printed in your passport.";
   }
 
-  if (!PHONE_PATTERN.test(phone)) {
+  if (!isPhoneNumber(phone)) {
     fieldErrors.phone =
       "Enter a valid phone number, including the country code (e.g. +963…).";
   }

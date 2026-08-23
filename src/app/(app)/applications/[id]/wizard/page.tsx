@@ -10,9 +10,11 @@ import { findCategory, isCategoryValue } from "@/lib/categories";
 import {
   INSTRUCTION_LANGUAGES,
   MEDICAL_PROFESSIONS,
+  PHONE_PATTERN_SOURCE,
   STEP_IDENTITY,
   STEP_QUESTION,
   hasQuestionStep,
+  isLatinName,
   needsSensitiveDataConsent,
   parseAnswers,
   totalSteps,
@@ -118,11 +120,21 @@ export default async function WizardPage({
             <IdentityStep
               applicationId={application.id}
               defaults={{
-                fullNameLatin: application.fullNameLatin ?? "",
+                // Falls back to the name they signed up with, but only when
+                // it already satisfies the Latin-letters rule this field
+                // enforces — a Google/email name in Arabic script gets left
+                // blank rather than prefilled with something that would
+                // just fail validation the moment they hit save.
+                fullNameLatin:
+                  application.fullNameLatin ??
+                  (isLatinName(session.user.name)
+                    ? session.user.name
+                    : ""),
                 phone: application.user.phone ?? "",
                 passportNumber: application.passportNumber ?? "",
                 passportExpiry: toDateInputValue(application.passportExpiry),
               }}
+              phonePattern={PHONE_PATTERN_SOURCE}
             />
           </div>
         )}

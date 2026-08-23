@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
+import Image from "next/image";
 import { getLocale, getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { SignOutButton } from "@/components/auth/sign-out-button";
@@ -39,9 +40,10 @@ export default async function DashboardLayout({
     <div className="flex min-h-screen flex-col bg-background">
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <Link href="/">
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/icon-192.png" alt="" width={28} height={28} className="rounded-md" />
             <span className="text-lg font-semibold text-foreground">
-              Masar Portal
+              Masar <span className="font-medium text-muted-foreground">Portal</span>
             </span>
           </Link>
 
