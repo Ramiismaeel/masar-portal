@@ -8,7 +8,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { findCategory, isCategoryValue } from "@/lib/categories";
 import { isWizardComplete, parseAnswers, STEP_IDENTITY } from "@/lib/wizard";
-import { canUploadInStatus } from "@/lib/uploads";
+import { canUploadInStatus, MAX_FILE_SIZE_BYTES } from "@/lib/uploads";
 import {
   checklistProgress,
   requirementsFor,
@@ -125,6 +125,18 @@ export default async function ApplicationPage({
               ? t("lockedReview")
               : t("lockedApproved")}
           </div>
+        )}
+
+        {/* Shown only while uploading is actually possible — on a locked
+            application it would be telling the applicant about a control that
+            isn't there. The limit comes from the constant, so it can't drift
+            away from what the server enforces. */}
+        {canUpload && (
+          <p className="text-xs text-muted-foreground">
+            {t("uploadHint", {
+              limit: Math.floor(MAX_FILE_SIZE_BYTES / (1024 * 1024)),
+            })}
+          </p>
         )}
 
         <ul className="flex flex-col gap-2">

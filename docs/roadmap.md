@@ -1276,6 +1276,27 @@ now. Please try again shortly."*
   - **Resolved by presigned direct-to-R2 upload (24 Aug 2026).** The file no longer travels through
     a Server Action at all, so the 4.5 MB ceiling is gone.
 
+### Submit declaration + upload hint (24 Aug 2026)
+- A required checkbox on the submit step, recorded as `Application.privacyAcceptedAt` (migration
+  `add_privacy_accepted_at`), plus a "PDF, JPG or PNG · up to 10 MB" hint above the checklist.
+- **Deliberately a DECLARATION, not a consent tickbox** — this was asked for as "accept to have his
+  docs & info", and building it as consent would have *weakened* the legal position. Ordinary
+  documents are processed under **Art. 6(1)(b)** (performance of a contract), as Datenschutz §6
+  already states. Asking for consent to processing we would carry out regardless contradicts that
+  basis, and consent that cannot actually be withdrawn without ending the service is invalid under
+  **Art. 7(4)** (*Koppelungsverbot*) — a point German DPAs make specifically. It would also create a
+  withdrawal obligation with no flow behind it.
+  What the checkbox does instead: confirms the documents are the applicant's, that the information
+  is accurate, and that they were shown the privacy policy (Art. 13 transparency).
+- Separate from `sensitiveDataConsentAt`, which stays the **Art. 9(2)(a) explicit consent** for
+  MEDICAL's criminal-record and medical-report documents. Two different legal instruments; merging
+  them would lose the one that actually is consent.
+- `privacyAcceptedAt` is **overwritten on each submission** (unlike `sensitiveDataConsentAt`, which
+  keeps the first): it must describe the submission currently under review, including a
+  resubmission after NEEDS_REVISION.
+- Enforced server-side in `submitApplication`, not just by the input's `required` — a record the
+  client could decline to write would be worthless.
+
 ### Presigned direct-to-R2 upload (24 Aug 2026)
 Three steps, replacing the single `uploadDocument` form submission:
 

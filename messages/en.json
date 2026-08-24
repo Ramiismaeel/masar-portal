@@ -127,6 +127,8 @@
     "upload": "Upload",
     "replace": "Replace",
     "preparing": "Preparing…",
+    "uploadHint": "PDF, JPG or PNG · up to {limit} MB per file. Photos are made smaller automatically before uploading.",
+    "submitDeclaration": "I confirm that these documents are mine, that the information I have given is accurate, and that I have read the <privacy>Privacy Policy</privacy>.",
     "checking": "Checking…",
     "uploadFailed": "The upload did not complete. Please check your connection and try again.",
     "tooLargeToSend": "This file is too large to upload. Please use a file smaller than {limit} MB — try compressing the PDF or scanning at a lower quality.",

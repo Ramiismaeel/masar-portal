@@ -15,7 +15,11 @@ import type { CategoryValue } from "@/lib/categories";
  * signed-up `User.name` is only ever used to prefill `fullNameLatin` when it
  * already satisfies this pattern, never forced in as-is.
  */
-const LATIN_NAME_PATTERN = /^[A-Za-z][A-Za-z\s.'-]{2,79}$/;
+// Note the ESCAPED hyphen (`\-`). See PHONE_PATTERN below for why: an
+// unescaped one is a syntax error under the `v` flag. This pattern is not
+// currently used as an HTML `pattern` attribute, but it is the same latent
+// bug, and escaping costs nothing.
+const LATIN_NAME_PATTERN = /^[A-Za-z][A-Za-z\s.'\-]{2,79}$/;
 
 export function isLatinName(value: string): boolean {
   return LATIN_NAME_PATTERN.test(value);
@@ -26,8 +30,20 @@ export function isLatinName(value: string): boolean {
  * Action's real validation and the identity form's HTML `pattern` attribute
  * (`.source`, since `pattern` takes a string) — a phone typo shows up
  * instantly via native browser validation instead of a round-trip.
+ *
+ * THE HYPHEN MUST STAY ESCAPED (`\-`). Browsers compile the HTML `pattern`
+ * attribute with the **`v` flag**, whose character-class rules are stricter
+ * than ordinary JavaScript regex: an unescaped `-` next to a class escape like
+ * `\s` is a syntax error, and the whole attribute is discarded with
+ * "Invalid regular expression … Invalid character class" in the console.
+ *
+ * This is nastier than it sounds, because it fails ASYMMETRICALLY: `.test()`
+ * on the server compiles without `v` and works fine, so validation still
+ * passes server-side while the browser's native validation silently does
+ * nothing. Verified: moving the hyphen to the front of the class does NOT
+ * fix it under `v` — only escaping does.
  */
-const PHONE_PATTERN = /^\+?[0-9][0-9\s-]{6,19}$/;
+const PHONE_PATTERN = /^\+?[0-9][0-9\s\-]{6,19}$/;
 
 export function isPhoneNumber(value: string): boolean {
   return PHONE_PATTERN.test(value);

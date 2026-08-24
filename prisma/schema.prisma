@@ -71,6 +71,22 @@ model Application {
   // needsSensitiveDataConsent() in src/lib/wizard.ts), not just that it was.
   // Set once, on first consent, and never overwritten by a later save.
   sensitiveDataConsentAt DateTime?
+  /// When the applicant ticked the declaration on the submit step: that the
+  /// documents are theirs, the information is accurate, and they have read the
+  /// privacy policy.
+  ///
+  /// Deliberately NOT a consent record, and deliberately separate from
+  /// `sensitiveDataConsentAt`. Ordinary documents here are processed under
+  /// Art. 6(1)(b) (performance of a contract), not consent — asking for
+  /// "consent" to processing we would carry out anyway would contradict the
+  /// basis stated in Datenschutz §6 and, because withdrawing it could not
+  /// actually stop the processing, would be invalid consent under Art. 7(4).
+  /// This is an Art. 13 acknowledgement plus a contractual declaration.
+  ///
+  /// Overwritten on each submission (unlike sensitiveDataConsentAt, which
+  /// records the FIRST consent): it must describe the submission currently
+  /// under review, including a resubmission after NEEDS_REVISION.
+  privacyAcceptedAt DateTime?
   submittedAt    DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt

@@ -491,9 +491,23 @@ export async function submitApplication(
     };
   }
 
+  // Enforced here, not just by the checkbox's `required` attribute. A form can
+  // be submitted without ever rendering that checkbox, and the whole point of
+  // the declaration is that there is a RECORD of it — a record the client
+  // could opt out of writing would be worthless.
+  if (formData.get("privacyAccepted") !== "on") {
+    return {
+      error: "Please confirm the declaration before submitting.",
+    };
+  }
+
   await prisma.application.update({
     where: { id: application.id },
-    data: { status: "PENDING_REVIEW", submittedAt: new Date() },
+    data: {
+      status: "PENDING_REVIEW",
+      submittedAt: new Date(),
+      privacyAcceptedAt: new Date(),
+    },
   });
 
   revalidatePath(`/applications/${application.id}`);
