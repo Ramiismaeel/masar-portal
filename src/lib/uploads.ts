@@ -5,14 +5,6 @@
  */
 
 /**
- * Largest file a user may CHOOSE. Images are shrunk in the browser before
- * being sent, so a 10 MB photo is fine — what actually travels is a few
- * hundred KB. This is the input limit, not the transport limit; see
- * MAX_UPLOAD_REQUEST_BYTES below for the one that constrains the network.
- */
-export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-
-/**
  * Largest file that can actually be SENT to a Server Action on Vercel.
  *
  * Vercel rejects any function request body over **4.5 MB** at the edge with
@@ -80,6 +72,22 @@ function parseScanMaxBytes(raw: string | undefined): number {
 export const SCAN_MAX_BYTES = parseScanMaxBytes(
   process.env.VIRUS_SCAN_MAX_BYTES,
 );
+
+/**
+ * Largest file a user may CHOOSE — deliberately the SAME value as
+ * SCAN_MAX_BYTES, not a separate number.
+ *
+ * A PDF passes through normalize-upload.ts untouched (see there for why), so
+ * whatever size it is chosen at is the size it gets scanned at. Capping the
+ * input at the scanner's own limit is what guarantees every accepted file can
+ * actually be scanned — decided over letting a bigger file in and silently
+ * skipping the scan when it didn't fit.
+ *
+ * Images are still shrunk in the browser and again on the server regardless
+ * of this number (see shrink-image.ts / normalize-upload.ts) — that's about
+ * scan coverage and upload speed for a large photo, not this ceiling.
+ */
+export const MAX_FILE_SIZE_BYTES = SCAN_MAX_BYTES;
 
 /**
  * Long-edge cap in pixels for re-encoded images. Lives here, not in

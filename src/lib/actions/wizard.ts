@@ -19,6 +19,20 @@ import {
   totalSteps,
   type WizardStepState,
 } from "@/lib/wizard";
+import {
+  calculatePoints,
+  isAgeBand,
+  isEnglishLevel,
+  isExperienceLevel,
+  isGermanLevel,
+  isPointFlag,
+  MIN_POINTS_REQUIRED,
+  type AgeBand,
+  type EnglishLevel,
+  type ExperienceLevel,
+  type GermanLevel,
+  type PointsAnswers,
+} from "@/lib/points";
 
 // NOTE: a "use server" module may export ONLY async functions. `WizardStepState`
 // and `EMPTY_WIZARD_STATE` therefore live in @/lib/wizard — the type re-export
@@ -245,6 +259,53 @@ export async function saveQuestionStep(
 
     if (Object.keys(fieldErrors).length > 0) {
       return { error: null, fieldErrors };
+    }
+  }
+
+  if (application.category === "JOB_SEEKER") {
+    const germanLevel = formData.get("germanLevel");
+    const englishLevel = formData.get("englishLevel");
+    const experience = formData.get("experience");
+    const ageBand = formData.get("ageBand");
+
+    const fieldErrors: Record<string, string> = {};
+    if (!isGermanLevel(germanLevel)) fieldErrors.germanLevel = "Choose a level.";
+    if (!isEnglishLevel(englishLevel))
+      fieldErrors.englishLevel = "Choose a level.";
+    if (!isExperienceLevel(experience))
+      fieldErrors.experience = "Choose an option.";
+    if (!isAgeBand(ageBand)) fieldErrors.ageBand = "Choose your age range.";
+
+    if (Object.keys(fieldErrors).length > 0) {
+      return { error: null, fieldErrors };
+    }
+
+    const points: PointsAnswers = {
+      germanLevel: germanLevel as GermanLevel,
+      englishLevel: englishLevel as EnglishLevel,
+      experience: experience as ExperienceLevel,
+      ageBand: ageBand as AgeBand,
+      // getAll, so multiple checked boxes all arrive. Unknown values are
+      // dropped rather than trusted — the form is client-supplied.
+      flags: formData.getAll("flags").filter(isPointFlag),
+    };
+
+    answers.points = points;
+
+    // THE GATE. Scored here, on the server, from the values just validated —
+    // never from a total the client sent. A number computed in the browser is
+    // a number the browser can choose.
+    const result = calculatePoints(points);
+
+    if (!result.meetsThreshold) {
+      // The answers are still saved below? No — we return before the update,
+      // deliberately. Persisting a failing self-assessment would leave the
+      // application in a half-answered state that isWizardComplete would
+      // still refuse to advance, with nothing telling the applicant why.
+      return {
+        error: `Your answers come to ${result.total} of the ${MIN_POINTS_REQUIRED} points needed for a Chancenkarte. Please review your answers — if you believe this is wrong, contact Masar and we will check it with you.`,
+        fieldErrors: {},
+      };
     }
   }
 

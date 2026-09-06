@@ -133,12 +133,15 @@ src/
 │   ├── (app)/           # layout.tsx checks session — this IS the security boundary
 │   ├── admin/            # real URL segment (not grouped); layout.tsx checks session + role
 │   ├── api/auth/[...all]/route.ts   # Better Auth's catch-all handler
+│   ├── api/cron/retention/route.ts  # Vercel Cron (03:00 daily, vercel.json) — auth'd via CRON_SECRET
 │   └── [path]/route.ts  # serves the built service worker (see PWA below)
 ├── lib/
 │   ├── actions/          # Server Actions — where business logic actually lives (see below)
 │   ├── emails/            # email templates + shared layout, sent via lib/email.ts (Resend)
 │   ├── prisma.ts, auth.ts, auth-client.ts, r2.ts, virus-scan.ts, uploads.ts
 │   ├── checklists.ts, categories.ts, application-status.ts, document-review-status.ts
+│   ├── file-signatures.ts, normalize-upload.ts   # upload pipeline internals, see §10
+│   ├── audit.ts, retention.ts, account-deletion.ts  # GDPR follow-through, see §9
 │   └── admin.ts, applications.ts, wizard.ts, cookie-consent.ts, utils.ts
 ├── i18n/                 # next-intl config — locale.ts, request.ts, pick.ts (see §7)
 ├── components/            # feature-grouped: ui/, admin/, auth/, checklist/, wizard/, legal/
@@ -216,8 +219,8 @@ for the full per-category document tables and the two wizard answers (`instructi
 
 ## 9. Data model
 
-Six tables — `users`, `applications`, `documents`, plus Better Auth's `sessions`, `accounts`,
-`verifications`.
+Seven tables — `users`, `applications`, `documents`, `audit_logs`, plus Better Auth's `sessions`,
+`accounts`, `verifications`.
 
 - A **user has many applications** (one per visa category pursued, enforced by
   `@@unique([userId, category])`). Status lives on the _application_, never on the user.
@@ -225,7 +228,17 @@ Six tables — `users`, `applications`, `documents`, plus Better Auth's `session
 - Foreign keys on the "many" side get `@@index([...])` or a leading-column composite `@@unique`
   — **never a bare `@unique`**, which would silently force a one-to-one relation.
 - All relations use `onDelete: Cascade` so deleting a user removes their data (GDPR "delete
-  account" enforced at the database level).
+  account" enforced at the database level; the R2 objects themselves are cleaned up first by
+  `src/lib/account-deletion.ts`, since cascading the DB rows doesn't touch storage).
+- **`AuditLog` is the one deliberate exception to cascading deletes.** `actorUserId` /
+  `subjectUserId` / `targetType` + `targetId` are plain strings, not foreign keys, specifically so
+  that deleting a user does not erase the record that an admin once opened their passport —
+  defensible under GDPR Art. 17(3)(b) because the row holds no personal data once the id it
+  references is gone. Written by `src/lib/audit.ts`'s `recordAudit()`, which **never throws** — an
+  audit write failing must not roll back the action it's recording. Covers document downloads,
+  review decisions, application exports, account deletion, and the nightly retention purge (see
+  §3's `/api/cron/retention`, `DOCUMENT_RETENTION_DAYS` — details in `docs/roadmap.md` "Audit log,
+  export & retention").
 - Wizard answers use a **hybrid** approach: fields common to all categories are real typed
   columns (`fullNameLatin`, `passportNumber`, `passportExpiry`); category-specific answers live in
   the `data` JSON column.
@@ -243,8 +256,9 @@ enumeration attacks on a portal holding passports.
 
 - Secrets live in `.env`, which is git-ignored. **Never** commit credentials; never expose them to the client.
 - Anything touching R2 keys, the Cloudmersive key, or the database must run **server-side only** (Server Components, Route Handlers, Server Actions). A `"use client"` file must never import them.
-- Every uploaded file is validated (type + size) **on the server as well as the client** — client validation is a UX convenience, not a security control.
-- Upload pipeline order: validate → **Cloudmersive scan** → only then store in R2. Never store an unscanned file in its permanent location.
+- Every uploaded file is validated (type + size) **on the server as well as the client** — client validation is a UX convenience, not a security control. Type is never trusted from `file.type` or the client's `Content-Type`: `src/lib/file-signatures.ts` detects the real type from the file's leading bytes (magic numbers), and only PDF/JPEG/PNG pass.
+- **Uploads go straight from the browser to an R2 `quarantine/` key** (presigned PUT, `createUploadTicket` in `src/lib/actions/documents.ts`) — Vercel rejects request bodies over 4.5 MB at the edge, so a large document can't reach a Server Action at all. `finalizeUpload` then pulls the object back server-side and runs the real pipeline: validate (magic bytes) → normalize (re-encode images; also what gets them under the scanner's size limit) → **Cloudmersive scan** → store at the permanent key → delete the quarantine object (in a `finally`, on every path — success, rejection, or crash). Never store an unscanned file at its permanent key. Full design in `docs/roadmap.md` "Presigned direct-to-R2 upload".
+- **The quarantine key must be checked against the caller's own application id before `finalizeUpload` trusts it** — without that check, any signed-in user could pass someone else's quarantine key and have that person's document promoted into their own application.
 - Authorisation is checked on the server for every request. Never trust an ID supplied by the client to decide what a user may see; scope every query by the authenticated user's session.
 - Users may edit an application or replace a document **only** when its status is `DRAFT`, `REJECTED`, or `NEEDS_REVISION` — never `PENDING_REVIEW` or `APPROVED`. Enforce this server-side (`canUploadInStatus()` in `src/lib/uploads.ts`).
 - The R2 bucket is never public. Files are served via short-lived (10-minute) presigned URLs generated server-side, not a public path or a permanent link.

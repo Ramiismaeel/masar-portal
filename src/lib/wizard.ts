@@ -1,4 +1,5 @@
 import type { CategoryValue } from "@/lib/categories";
+import type { PointsAnswers } from "@/lib/points";
 
 /**
  * Wizard shape and the answers it produces.
@@ -71,6 +72,12 @@ export type MedicalProfession = (typeof MEDICAL_PROFESSIONS)[number]["value"];
 export type WizardAnswers = {
   instructionLanguage?: InstructionLanguage;
   medicalProfession?: MedicalProfession;
+  /**
+   * Chancenkarte § 20b points self-assessment. Category-specific, so it lives
+   * in the `data` JSON column per the hybrid rule in CLAUDE.md §9, not in its
+   * own columns. Scored only by calculatePoints() in src/lib/points.ts.
+   */
+  points?: PointsAnswers;
 };
 
 /**
@@ -96,9 +103,27 @@ export const EMPTY_WIZARD_STATE: WizardStepState = {
 export const STEP_IDENTITY = 0;
 export const STEP_QUESTION = 1;
 
-/** Chancenkarte and Ausbildung have no checklist-driving question — one step only. */
+/**
+ * Ausbildung has no second step. Study and Medical each ask one question that
+ * drives their checklist; Chancenkarte instead asks the § 20b points
+ * self-assessment, which drives nothing on the checklist but GATES the
+ * application (see needsPointsCheck).
+ */
 export function hasQuestionStep(category: CategoryValue): boolean {
-  return category === "STUDENT" || category === "MEDICAL";
+  return (
+    category === "STUDENT" ||
+    category === "MEDICAL" ||
+    category === "JOB_SEEKER"
+  );
+}
+
+/**
+ * Chancenkarte only. Step 1 for this category is the points table rather than
+ * a single-select question, and the applicant cannot advance past it below
+ * MIN_POINTS_REQUIRED — a rule enforced in saveWizardStep, not just in the UI.
+ */
+export function needsPointsCheck(category: CategoryValue): boolean {
+  return category === "JOB_SEEKER";
 }
 
 /**

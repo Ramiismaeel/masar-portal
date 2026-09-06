@@ -24,6 +24,7 @@ import type { Locale } from "@/i18n/locale";
 import { WizardProgress } from "@/components/wizard/wizard-progress";
 import { IdentityStep } from "@/components/wizard/identity-step";
 import { QuestionStep } from "@/components/wizard/question-step";
+import { PointsStep } from "@/components/wizard/points-step";
 
 /** Date column → the "YYYY-MM-DD" string <input type="date"> expects. */
 function toDateInputValue(date: Date | null): string {
@@ -144,6 +145,17 @@ export default async function WizardPage({
             <h1 className="text-xl font-semibold text-card-foreground">
               {t("oneMoreQuestion")}
             </h1>
+
+            {/* Chancenkarte's second step is the § 20b points table rather
+                than a single-select question — it drives no checklist rule,
+                it gates the application. */}
+            {category.value === "JOB_SEEKER" && (
+              <PointsStep
+                applicationId={application.id}
+                locale={locale}
+                defaults={answers.points}
+              />
+            )}
 
             {category.value === "STUDENT" && (
               <QuestionStep

@@ -114,7 +114,22 @@
     "saveAndContinue": "Save & continue",
     "saving": "Saving…",
     "saveAndFinish": "Save & finish",
-    "back": "Back"
+    "back": "Back",
+    "pointsLegend": "Let's check your points",
+    "pointsHint": "Germany gives the Opportunity Card using a points system. You need at least 6 points. Answer the questions below and your total updates as you go — you will not be able to continue below 6 points.",
+    "pointsBasicNote": "Before points are counted, you also need a completed vocational training or university degree, and either German at A1 or English at B2. Masar will check this with you.",
+    "pointsFlagsLegend": "Tick anything that is true for you",
+    "pointsTotal": "Your total so far",
+    "pointsSuffix": "{points} points",
+    "pointsPassNote": "You have enough points to apply. Reaching 6 points does not by itself guarantee an Opportunity Card — the German authorities decide, and other conditions apply. The Masar team will check your application and tell you where you stand.",
+    "pointsFailNote": "You need {needed} points to continue, so you cannot submit this application yet. Look through your answers again — people often miss points for work experience or for a qualification that is partly recognised. If you believe your score should be higher, contact Masar and we will go through it with you.",
+    "germanLevel": "How good is your German?",
+    "germanLevelHint": "Choose the highest level you can prove with a certificate. B2 gives the most points; A1 gives none, but it still helps you meet the basic requirement.",
+    "englishLevel": "How good is your English?",
+    "englishLevelHint": "Only C1 and above give a point here. B2 English gives no points, but it can help you meet the basic requirement.",
+    "experience": "Work experience in your profession",
+    "experienceHint": "Only count work in a job that your own training or degree qualifies you for.",
+    "ageBand": "How old are you?"
   },
   "Checklist": {
     "title": "Your document checklist",
