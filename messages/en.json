@@ -53,7 +53,43 @@
     "deleteSentBody": "We sent you a link to confirm deleting your account. Open it in this browser while still signed in. The link expires in 1 hour.",
     "deletedTitle": "Your account has been deleted",
     "deletedBody": "Your account, applications and uploaded documents have been permanently removed. Thank you for using Masar Portal.",
-    "deletedHome": "Back to home"
+    "deletedHome": "Back to home",
+    "TwoFactor": {
+      "title": "Two-step verification",
+      "statusOn": "On — a code from your authenticator app is required when you sign in.",
+      "statusOff": "Off — your password alone can sign you in.",
+      "intro": "Add a second step to signing in, using an authenticator app such as Google Authenticator or Aegis.",
+      "requiredForAdmin": "Two-step verification is required for staff accounts. Set it up below to reach the admin area.",
+      "confirmPassword": "Confirm your password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "enable": "Set up two-step verification",
+      "scanIntro": "Scan this code with your authenticator app, then enter the 6-digit code it shows.",
+      "backupTitle": "Save your backup codes now",
+      "backupHelp": "These are shown once. Each one works a single time if you lose your phone. Store them somewhere safe and not on the same device.",
+      "copyCodes": "Copy codes",
+      "copied": "Copied",
+      "enterCode": "6-digit code",
+      "verify": "Verify and turn on",
+      "doneHelp": "You will be asked for a code from your authenticator app the next time you sign in.",
+      "errorEnable": "Could not start setup. Check your password and try again.",
+      "errorCode": "That code was not accepted. Check your authenticator app and try again.",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "regenerate": "Generate new backup codes",
+      "regenerateIntro": "Lost your saved codes, or used them all? Generate a new set. The old codes stop working immediately; your authenticator app is not affected.",
+      "errorRegenerate": "Could not generate new codes. Check your password and try again.",
+      "pendingIntro": "You started setting this up but never confirmed a code. Your authenticator app still holds the right secret — enter a code from it to finish.",
+      "showQrIntro": "Did not scan it, or scanning a different phone? Show the same QR code again.",
+      "showQr": "Show the QR code again",
+      "reenrol": "Set up a new phone",
+      "reenrolWarning": "This replaces your current secret and backup codes immediately. Your existing authenticator entry and saved codes stop working the moment you continue — so only do this with the new phone in your hand, and finish by scanning and entering a code.",
+      "reenrolConfirm": "Yes, start over",
+      "disable": "Turn off two-step verification",
+      "disableWarning": "Your account will be protected by your password alone. Staff accounts cannot open the admin area without two-step verification, so you would have to set it up again before returning there.",
+      "disableConfirm": "Yes, turn it off",
+      "cancel": "Cancel",
+      "errorDisable": "Could not turn it off. Check your password and try again."
+    }
   },
   "AppLayout": {
     "account": "Account",
@@ -258,7 +294,22 @@
     },
     "SignOut": {
       "button": "Sign out",
-      "signingOut": "Signing out…"
+      "signingOut": "Signing out…",
+      "error": "You are still signed in — sign-out did not complete. Please try again."
+    },
+    "TwoFactor": {
+      "title": "Two-step verification",
+      "codeLabel": "Verification code",
+      "codeHelp": "Enter the 6-digit code from your authenticator app.",
+      "backupLabel": "Backup code",
+      "backupHelp": "Enter one of the backup codes you saved when you set this up — exactly as shown, including the hyphen and capital letters. Each one works only once.",
+      "useBackup": "Lost your phone? Use a backup code",
+      "useAuthenticator": "Use your authenticator app instead",
+      "trustDevice": "Trust this device for 30 days",
+      "submit": "Verify",
+      "errorCode": "That code was not accepted. Please try again.",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "errorLocked": "Too many failed attempts — this account is locked for a few minutes. Wait, then try again with a fresh code from your authenticator app."
     }
   }
 }

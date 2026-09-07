@@ -61,7 +61,7 @@ export function LoginForm({
     setIsSubmitting(true);
 
     try {
-      const { error } = await authClient.signIn.email({
+      const { data, error } = await authClient.signIn.email({
         email,
         password,
       });
@@ -71,6 +71,21 @@ export function LoginForm({
         setIsSubmitting(false);
         return; // ← stop here
       }
+
+      // A correct password is not a session when 2FA is on: better-auth
+      // returns `twoFactorRedirect` and issues only a short-lived challenge
+      // cookie instead. Navigating to /dashboard here would bounce straight
+      // back to /login and look like the password was wrong.
+      //
+      // We handle the redirect ourselves rather than letting the client plugin
+      // do it (no `twoFactorPage` is configured in auth-client.ts) so it stays
+      // a router navigation like every other transition in this form.
+      if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+        setIsSubmitting(false);
+        router.push("/two-factor");
+        return;
+      }
+
       setIsSubmitting(false);
       router.push("/dashboard");
       router.refresh();

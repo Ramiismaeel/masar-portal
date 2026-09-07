@@ -46,6 +46,24 @@ export default async function AdminLayout({
   if (!session?.user) redirect("/login");
   if (session.user.role !== "ADMIN") redirect("/dashboard");
 
+  // Staff hold the keys to every passport, medical report and criminal-record
+  // extract in the portal, so a password alone is not enough to be in here.
+  //
+  // Scope, stated honestly: this requires the admin to be ENROLLED in 2FA, not
+  // that this particular session passed a challenge — a Google sign-in never
+  // gets one (see requireAdminSession in src/lib/admin.ts for why, and the
+  // accepted trade-off).
+  //
+  // A REDIRECT, not a refusal: enrolment lives on /account, which is outside
+  // /admin precisely so this gate cannot lock an admin away from the only page
+  // that clears it. Refusing here instead would be a dead end for any admin
+  // who has not enrolled yet — including a Google-only one, which is why
+  // `allowPasswordless: true` is set in src/lib/auth.ts.
+  //
+  // This protects PAGES only. Server Actions and route handlers never run this
+  // layout and re-check independently in requireAdminSession().
+  if (!session.user.twoFactorEnabled) redirect("/account?mfa=required");
+
   return (
     <NextIntlClientProvider locale="en" messages={enMessages}>
       <div dir="ltr" className="min-h-screen bg-background">

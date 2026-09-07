@@ -51,7 +51,49 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  /// Written by Better Auth's twoFactor plugin, never by us and never by a
+  /// client (the plugin declares it `input: false`, same protection `role`
+  /// relies on). Only flips true AFTER the first TOTP code is verified, so it
+  /// means "this person has proven they hold the secret", not "they started
+  /// setting it up" — which is what makes it safe to gate /admin on.
+  twoFactorEnabled Boolean    @default(false)
+  twoFactor        TwoFactor[]
+
   @@map("users")
+}
+
+/// Second-factor enrolment (Better Auth `twoFactor` plugin). One row per
+/// enrolled user; the plugin looks it up by userId.
+///
+/// **`secret` is encrypted with `BETTER_AUTH_SECRET`**, not stored in the
+/// clear — which makes that env var load-bearing in a new way: rotating it
+/// would make every enrolled secret undecryptable and lock every admin out of
+/// /admin at once, recoverable only by deleting these rows by hand. It is
+/// already per-environment (see docs/roadmap.md "Environments"), so enrolments
+/// deliberately do not carry between local, preview and production.
+///
+/// `@@index([userId])` rather than `@unique`: the plugin's own schema declares
+/// it as a plain index, and this project's rule is never to put a bare
+/// `@unique` on the "many" side (it would silently force a one-to-one).
+model TwoFactor {
+  id                      String    @id
+  /// TOTP secret, symmetrically encrypted — see the note above.
+  secret                  String
+  /// Recovery codes, stored as one hashed string by the plugin. Shown to the
+  /// user exactly once, at enrolment.
+  backupCodes             String
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verified                Boolean   @default(true)
+  /// Feeds the plugin's built-in account lockout (10 consecutive failures →
+  /// locked 15 minutes by default), which is why brute-forcing a 6-digit code
+  /// is not the weakness it looks like.
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+
+  @@index([secret])
+  @@index([userId])
+  @@map("two_factors")
 }
 
 

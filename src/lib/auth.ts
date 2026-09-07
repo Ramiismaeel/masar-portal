@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { twoFactor } from "better-auth/plugins";
 import { prisma } from "./prisma";
 import { sendEmail } from "./email";
 import { verificationEmail } from "./emails/verification";
@@ -111,6 +112,49 @@ export const auth = betterAuth({
       },
     },
   },
+
+  // Second factor for STAFF. The threat this answers is specific: one leaked
+  // admin password exposes every passport, medical report and criminal-record
+  // extract in the portal at once. Applicants are not required to use it —
+  // enforcement lives in admin/layout.tsx and requireAdminSession(), not here.
+  plugins: [
+    twoFactor({
+      // Shown as the account name in Google Authenticator / Aegis.
+      issuer: "Masar Portal",
+
+      // Read from better-auth's source (utils/password.mjs), not the docs:
+      //   shouldRequirePassword = !allowPasswordless
+      //       ? true
+      //       : Boolean(credentialAccount?.password)
+      // So this does NOT weaken anyone who has a password — they are still
+      // asked for it. What it does is stop a Google-only account being unable
+      // to enrol at all, which with admin enforcement on would mean locked out
+      // of /admin with no way back in. Exactly the trap deleteUser above
+      // already documents for password checks on Google-only accounts, and
+      // relevant here because every non-admin user in this database today is
+      // Google-only while `role` is granted by hand in Postgres.
+      allowPasswordless: true,
+
+      // Left at the default (false) deliberately: `twoFactorEnabled` only
+      // flips true after the first code is verified. Enabling optimistically
+      // would let someone lock themselves out by scanning nothing.
+      // skipVerificationOnEnable: false,
+
+      backupCodeOptions: {
+        // Already the plugin's default — `twoFactor()` builds
+        // `{ storeBackupCodes: "encrypted", ...options?.backupCodeOptions }`,
+        // so this changes nothing today. It is pinned explicitly because a
+        // backup code bypasses TOTP entirely: if a future version ever flipped
+        // that default, the bypass credential for every admin would silently
+        // start living in the database in clear text, and nothing in this app
+        // would fail loudly enough to notice.
+        //
+        // (An earlier comment here claimed this option *fixed* plaintext
+        // storage. It did not — see docs/roadmap.md, "RETRACTED".)
+        storeBackupCodes: "encrypted",
+      },
+    }),
+  ],
 
   emailVerification: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days

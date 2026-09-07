@@ -91,9 +91,10 @@ Any page added under `(app)` is protected by construction.
       the Datenschutz rewrite (§7 and §11), which is now factually wrong in both directions.
 - [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
 - [ ] **Phase 13** GDPR & security hardening — **the active phase, ahead of Phase 12 in priority.**
-      Three technical gaps first (✅ `SKIPPED` retired 7 Sep 2026 · ☐ admin MFA · ☐ resolve
-      Cloudmersive), then the legal/organisational work that needs a German specialist. See
-      "Phase 13" below.
+      Three technical gaps first (✅ `SKIPPED` retired · ✅ admin MFA, shipped and fully tested
+      7 Sep 2026 · ☐ resolve Cloudmersive), then the legal/organisational work that needs a German
+      specialist. See "Phase 13" below. **One decision still open on MFA**: Google sign-in
+      bypasses the second-factor challenge entirely (see the warning under 13a item 2).
 
 ## Immediate next steps
 1. **No way to change a decision once made.** `decideApplication` only runs from
@@ -168,12 +169,232 @@ convictions) data belonging to a vulnerable group (Syrian visa applicants), an e
 
 2. **MFA on admin accounts.** The threat is concrete and not theoretical: one leaked admin
    password exposes *every* passport, medical report and criminal-record extract in the system at
-   once. Better Auth 1.7 ships a `twoFactor` plugin (TOTP + backup codes); it adds its own table,
-   so this needs a Prisma migration. **Enforce it in two places, not one** — `admin/layout.tsx`
-   for pages, *and* `requireAdminSession()` in `src/lib/admin.ts`, because this project's own rule
-   is that layouts never run for a direct Server Action call. Open decision: an admin who signs in
-   with Google has Google's 2FA, not ours, and we cannot verify it is switched on — recommendation
-   is to require our own TOTP for `role === "ADMIN"` regardless of provider.
+   once. Better Auth 1.7's `twoFactor` plugin (TOTP + backup codes).
+
+   **✅ Stage 1 of 4 done (7 Sep 2026) — schema, plugin, client wiring.**
+   - `TwoFactor` model + `User.twoFactorEnabled` (migration `20260907004252_add_two_factor`).
+     `onDelete: Cascade` like every other relation; `@@index([userId])` not `@unique`, matching
+     both the plugin's own declared schema and this project's "never a bare `@unique` on the many
+     side" rule.
+   - **`allowPasswordless: true`, decided from the plugin source, not the docs.**
+     `shouldRequirePassword` in `better-auth/dist/utils/password.mjs` reads:
+     `!allowPasswordless ? true : Boolean(credentialAccount?.password)`. So the default would
+     require a password to *enrol* — which a Google-only account does not have, meaning it could
+     never enable 2FA, and once admin enforcement is on it would be locked out of `/admin`
+     permanently. Same trap `deleteUser` already documents. Checked against the real database
+     before deciding: the sole ADMIN today has `credential + google` and a password (so is
+     unaffected — the option only relaxes the check for accounts with no password at all), but
+     **both non-admin users are Google-only** and `role` is granted by hand in Postgres, so the
+     next admin very plausibly has no password.
+   - `skipVerificationOnEnable` left at its default `false`, so `twoFactorEnabled` only flips true
+     after a code is actually verified. That is what makes it safe for the enforcement gate to
+     read: it means "has proven possession of the secret", not "started setup".
+   - Verified at runtime, not assumed: `POST /api/auth/two-factor/enable` → **401** while
+     `/api/auth/two-factor/does-not-exist` → **404**, so the endpoints really are registered.
+   - **New operational hazard, worth knowing before it bites:** the TOTP secret is stored
+     symmetrically encrypted with **`BETTER_AUTH_SECRET`** (`symmetricEncrypt({ key:
+     ctx.context.secretConfig })` in the plugin's enable handler). Rotating that env var in
+     production would make every enrolled secret undecryptable and lock out every admin at once,
+     recoverable only by deleting `two_factors` rows by hand. It is already per-environment, so
+     enrolments deliberately do not carry between local/preview/prod.
+
+   **⚠️ OPEN SECURITY GAP found while testing (7 Sep 2026) — Google sign-in bypasses the 2FA
+   challenge entirely.** The plugin registers exactly one sign-in hook, and its matcher is:
+   `context.path === "/sign-in/email" || "/sign-in/username" || "/sign-in/phone-number"`.
+   `/callback/google` is not in that list, and `grep`ing `better-auth/dist/oauth2/*.mjs` for
+   `twoFactor` returns nothing. Consequences, both real:
+   - *Reassuring half*: a Google-only account with 2FA on cannot lock itself out — the challenge
+     never fires for it.
+   - *The problem*: `requireAdminSession()` and `admin/layout.tsx` read `user.twoFactorEnabled`,
+     which is a flag on the **user row**, not "this session passed a second factor". An admin who
+     enrolled and then signs in with Google gets `twoFactorEnabled === true` on a session that
+     never presented a code, and both gates open. So what is enforced today is *"this admin has
+     enrolled"*, not *"this session was verified with two factors"* — weaker than the comments
+     originally claimed, and weaker than the "require our own TOTP regardless of provider"
+     intention recorded above. The real admin account has both `credential` and `google`, so this
+     is reachable, not theoretical.
+   - **DECIDED 7 Sep 2026 (Rami): accept it, and document it honestly.** Option 3 of three — the
+     alternatives were refusing Google for staff accounts, or hooking the OAuth callback with a
+     custom `after` hook built on undocumented internals. Consequences of the choice, all of them
+     now written down rather than implied:
+     - What is enforced is **"this admin is enrolled in 2FA"**, not "this session passed a second
+       factor". The comments in `src/lib/admin.ts` and `admin/layout.tsx` were rewritten to say
+       exactly that; they previously overstated it.
+     - A staff member who signs in with Google is protected by **Google's account security**, not
+       by ours, and we cannot verify that Google 2FA is switched on for them.
+     - **This must appear in the DPIA as a stated limitation**, not be presented as a second
+       factor we control. Added to the 13c list by reference.
+     - Revisit if staff numbers grow or if an incident makes the distinction matter: option 1 is
+       still cheap to implement later.
+
+   **✅ Stages 2–4 shipped and verified live (7 Sep 2026).**
+   - *Stage 2 — enrolment* (`TwoFactorControl`, on `/account` deliberately, **not** under `/admin`,
+     so the gate cannot lock an admin away from the only page that clears it). `enable` →
+     `totpURI` + backup codes → QR (`react-qr-code`, rendered locally — sending a TOTP secret to a
+     third-party QR service would have been absurd here) → `verifyTotp`. Verified end to end on a
+     real authenticator app, on both a Google-only account (no password field, `allowPasswordless`
+     path) and the password-holding admin (password field shown, `hasPassword` path).
+   - *Stage 3 — sign-in challenge*: verified by Rami — password sign-in redirected to
+     `/two-factor`, the app's code was accepted, "trust this device 30 days" worked.
+   - *Stage 4 — enforcement in two places*: verified in **both** directions. ADMIN without 2FA →
+     `/admin` redirects to `/account?mfa=required`, **and** `/admin/applications/[id]/export`
+     (a route handler, which never runs the layout) returned "Not found". ADMIN with 2FA → both
+     open normally. The route-handler half is the one that actually mattered: it is the surface an
+     un-enrolled admin could otherwise have used to pull passports directly.
+
+   **Follow-ups found by testing, not yet done:**
+   - **Enrolment cannot be resumed.** `TwoFactorControl` keeps its phase in React state only, so
+     reloading mid-setup hides the code field even though the `two_factors` row exists — the only
+     way on is to re-enable, which mints a *new* secret and orphans the entry already scanned into
+     the authenticator app. Fix: detect an unverified row server-side and render a "finish setup"
+     state (`/two-factor/get-totp-uri` can re-issue the QR).
+   - ✅ **Backup-code sign-in verified end to end (7 Sep 2026)** in a private window, once the
+     three separate defects below were fixed. **MFA is now complete and fully exercised**: enrol
+     on both the password and the Google-only path, TOTP sign-in, backup-code sign-in, code
+     rotation, and enforcement in both directions. Note for anyone re-testing: "trust this device"
+     suppresses the challenge for 30 days, so a private window is required.
+
+### The two-factor input ate backup codes (found 7 Sep 2026, fixed)
+- Rami tested the recovery path in a private window and could not enter a code: the field
+  truncated it and stripped characters.
+- **Root cause was the component, not the server.** Backup codes are
+  `generateRandomString(10, "a-z", "0-9", "A-Z")` with a hyphen spliced in at position 5 — i.e.
+  **11 characters, mixed case, `XXXXX-XXXXX`** — and `verifyBackupCode` compares them with an
+  exact `codes.includes(code)`. The form's default mode was the authenticator one, which ran
+  `replace(/\D/g, "")` with `maxLength={6}`: typing `9UJaj-4xRLO` silently became `94`. Switching
+  to backup mode required noticing a small text link under the card, which is exactly the kind of
+  thing nobody notices the first time — and the field destroyed the input without a word.
+- **Fix, in two passes — and the second pass matters as much as the first.**
+  1. One input for both credentials, no filtering, no `maxLength`, endpoint chosen from the shape
+     of what was typed (`/^\d{6}$/` → `verifyTotp`, else → `verifyBackupCode`). Trimming
+     whitespace at submit is the only safe normalisation: filtering, truncating or upper-casing
+     each turn a valid code invalid against an exact string match.
+  2. Removing the mode switch entirely was an over-correction. Rami's next report was *"I can't
+     switch to backup code, there's no option anymore"* — because the first thing someone whose
+     phone is gone does is **look for the button**, and the always-`000000` placeholder shouted
+     "digits only" louder than any help text underneath it. So the switch is back as a real
+     `outline` button, but it is now **purely cosmetic**: it changes label, help text and
+     placeholder (`xxxxx-xxxxx`) and nothing else. Routing still happens by shape, so being in
+     the "wrong" mode cannot mangle or misroute anything.
+- Lessons worth keeping: "helpful" input sanitising is destructive whenever the server does exact
+  matching; a mode that *decides behaviour* is a trap, while a mode that only *labels* things is
+  a signpost; and on a recovery path, discoverability is a feature, not clutter.
+- Verified in the browser: toggling switches label/help/placeholder and clears the field, and the
+  backup field holds `9UJaj-4xRLO` intact. Note when testing by automation — clicks land before
+  hydration finishes on a freshly recompiled dev page and silently do nothing; that cost two false
+  "the button is broken" readings here.
+- Verified: the field now holds `9UJaj-4xRLO` intact — hyphen, case and all eleven characters.
+  **Still owed: one real challenge-flow run**, since a directly-opened `/two-factor` page has no
+  challenge cookie and cannot exercise verification.
+- **Only the most recent enrolment's backup codes are valid.** Re-running "set up" overwrites the
+  `two_factors` row with a new secret and a new set of codes; codes printed by an earlier attempt
+  are dead. This bit during testing and would bite a user the same way.
+
+### ❌ RETRACTED: "backup codes were stored in plaintext" (claimed and disproved, 7 Sep 2026)
+**This was a false finding of Claude's. It is kept here, corrected, so nobody re-derives it.**
+- The claim: `encodeBackupCodes` in `better-auth/dist/plugins/two-factor/backup-codes/index.mjs`
+  ends in `return json`, therefore backup codes are written as a plain JSON array unless
+  `storeBackupCodes` is set.
+- **Why it was wrong:** the plugin supplies that option itself. `twoFactor()` in
+  `plugins/two-factor/index.mjs` builds
+  `const backupCodeOptions = { storeBackupCodes: "encrypted", ...options?.backupCodeOptions }`,
+  so `"encrypted"` is already the default and the `return json` branch is only reachable if a
+  caller explicitly overrides it. Backup codes have been encrypted at rest all along.
+- **How it was caught:** by looking at the actual stored value while debugging something else —
+  `two_factors.backupCodes` is 362 characters starting with a hex character, not the `[` a JSON
+  array would start with. The database contradicted the code reading.
+- `storeBackupCodes: "encrypted"` stays in `src/lib/auth.ts` as a deliberate no-op that pins the
+  behaviour explicitly, so a future default change cannot silently downgrade it. It did **not**
+  invalidate any existing codes, because the storage format never changed.
+- **The lesson, which is the reason this entry survives:** reading a function in isolation is not
+  verification. This project's convention is to trace the real call path (as was done properly for
+  account-linking and `deleteUser`) — and where a claim is about data, check the data.
+
+### The lockout that looked like a broken TOTP (7 Sep 2026)
+- Symptom, and it was alarming: after several rejected backup codes, the **authenticator code
+  stopped working too** — correct, freshly generated, still refused.
+- Cause: the plugin's built-in account lockout. Every failed verification increments
+  `two_factors.failedVerificationCount`, and at 10 it sets `lockedUntil` ~15 minutes out
+  (`assertTwoFactorNotLocked`). While locked, *everything* is refused, TOTP included. Confirmed by
+  reading the row: `failedVerificationCount = 10`, `lockedUntil` still in the future.
+- **The UI hid it, and that was a design mistake of ours, not a plugin flaw.** The form deliberately
+  collapsed every failure into "That code was not accepted" on the reasoning that distinguishing
+  causes would tell an attacker when their guessing was working. That reasoning does not survive
+  contact with the case: someone brute-forcing already knows their attempts fail, so "temporarily
+  locked" tells them next to nothing — while a locked-out legitimate user has no way to guess that
+  *waiting* is the answer, and instead concludes the whole feature is broken. Hours went into that
+  conclusion here.
+- Fixed: the lockout is surfaced separately (`errorLocked`). The plugin throws
+  `TOO_MANY_REQUESTS`, so the client distinguishes it with `error.status === 429`.
+- General rule worth carrying: security-motivated vagueness has a cost, and it lands on the
+  legitimate user. Hide what actually helps an attacker (which account exists, which factor was
+  wrong); do not hide *what the user must do next*.
+
+### Backup-code rotation — the "enabled" state was a dead end (7 Sep 2026)
+- Once `twoFactorEnabled` was true, `TwoFactorControl` rendered a static "On" message and nothing
+  else: no way to rotate backup codes, re-enrol a new phone, or turn 2FA off. Anyone who lost or
+  used up their codes had no route back inside the app — and on an admin account, which cannot
+  self-serve past the /admin gate, that means editing the database by hand. A recovery feature
+  whose recovery path needs a DBA is not a recovery feature.
+- Added: **Generate new backup codes** in the enabled state, via
+  `POST /two-factor/generate-backup-codes` (password required for accounts that have one, same
+  `shouldRequirePassword` rule as everywhere else). Verified against the endpoint's source that it
+  updates the `backupCodes` column only — **the TOTP secret is untouched, so the authenticator app
+  keeps working** and only the paper codes rotate. The codes panel is now one shared block used by
+  both enrolment and rotation, so the "save these now, shown once" warning cannot drift between
+  them.
+- ✅ **Completed 7 Sep 2026 — the enabled state now has all four controls**: rotate backup codes,
+  set up a new phone, turn 2FA off, and finish an abandoned setup.
+- **`enable` on an already-enrolled account is destructive and immediate — this is the sharp edge
+  of the whole feature.** Read from the handler: `if (existingTwoFactor) adapter.update({...})`
+  replaces the secret *and* the backup codes straight away, while `User.twoFactorEnabled` stays
+  `true`. Press "set up" again and close the tab without scanning, and the account now demands a
+  code from a secret nobody holds — a self-inflicted lockout, recoverable only from the database.
+  This is very likely what produced the orphaned authenticator entries during testing. Hence:
+  "Set up a new phone" is behind an explicit red warning and a confirm step, never a single click.
+- **Abandoned setup is now resumable.** `account/page.tsx` detects a `two_factors` row with
+  `twoFactorEnabled === false` and passes `pendingSetup`; the control then offers "enter a code to
+  finish" first (the stored secret is unchanged, so whatever was already scanned still works) and
+  "show the QR again" second, via `/two-factor/get-totp-uri` — verified in source to rebuild the
+  URI from the **existing** secret rather than minting a new one. Previously a reload dropped the
+  user back to "start setup", whose only effect would have been to orphan their scanned entry.
+- Turning 2FA off closes `/admin` to a staff account until they enrol again; the warning says so
+  in both languages rather than leaving them to discover it.
+
+### Copy-paste repair on the two-factor input (7 Sep 2026)
+- Symptom: a backup code saved into a document was rejected on entry.
+- Cause is the format meeting the real world: codes look like `9UJaj-4xRLO`, and Word/Google Docs
+  autocorrect the plain hyphen-minus into an en-dash (`–`) on save. Visually near-identical;
+  against `codes.includes(code)` simply a different string. Zero-width characters and non-breaking
+  spaces arrive the same way from web pages and PDFs.
+- `repairPastedCode()` normalises dash lookalikes, zero-width characters and NBSP, then trims.
+  **This is not a return to the input filtering that caused the earlier bug** — the distinction is
+  that every character it touches is one a real code cannot contain, so it can only turn a failing
+  paste into a passing one. Case is never changed (codes are mixed-case and case-sensitive) and no
+  alphanumeric is ever removed. Covered by a quick table of real damage patterns when written.
+
+### Sign-out reported success on failure (found 7 Sep 2026, fixed)
+- Symptom: sign-out appeared to "refuse" — the app showed `/login`, then any protected page showed
+  the user still signed in.
+- **Two independent causes, and separating them mattered.**
+  1. *Environment*: the dev server's render worker had crashed (`Jest worker encountered 2 child
+     process exceptions`), so **every** `/api/auth/*` call returned 500 — `sign-out`,
+     `get-session` and `request-password-reset` alike, while ordinary pages still rendered 200.
+     Nothing to do with the app. Cure: stop the server, delete `.next`, start exactly one.
+     Diagnostic worth remembering: `curl` the endpoint and read the 500 body — it names the Jest
+     worker crash outright, which is never an application error.
+  2. *Real defect, and the reason the first one was invisible*: `SignOutButton` did
+     `await authClient.signOut(); router.push("/login")` — discarding the result. A failed
+     sign-out therefore looked exactly like a successful one.
+- Why that is a security bug and not a papercut: on the shared and internet-café devices this
+  project's threat model explicitly names, the user sees a login screen, believes they are out,
+  and walks away from a live session holding a passport, a medical report and a criminal-record
+  extract.
+- Fixed: the result is checked; on error the component **stays put**, logs, and shows a
+  `role="alert"` message (new `Auth.SignOut.error` key, EN + AR). The message is absolutely
+  positioned (`end-0`, RTL-safe) because this button sits in two fixed-height headers and the
+  mobile menu — an inline node would reflow them. Verified after the fix: `sign-out` → 200,
+  redirect to `/login`, and the `sessions` row actually deleted.
 
 3. **Resolve Cloudmersive** (see the analysis below). This is the decision that unblocks the
    Datenschutz rewrite, the processor inventory, and a whole branch of the DPIA.
