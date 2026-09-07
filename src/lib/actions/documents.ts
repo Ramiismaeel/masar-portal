@@ -22,7 +22,6 @@ import {
   SCAN_MAX_BYTES,
   canUploadInStatus,
 } from "@/lib/uploads";
-import type { ScanStatus } from "@/generated/prisma/client";
 import { findRequirement, checklistProgress } from "@/lib/checklists";
 import { parseAnswers } from "@/lib/wizard";
 import { loadOwnedApplication } from "@/lib/actions/wizard";
@@ -239,46 +238,50 @@ async function storeScannedDocument({
   // describe what we actually stored.
   const storedMimeType = normalized.mimeType;
 
-  let scanStatus: ScanStatus;
-
+  // A file that cannot be scanned is REJECTED, never stored. This used to
+  // store it as scanStatus = SKIPPED, which made the Datenschutz's written
+  // promise — "automatic malware scanning of every uploaded file before it is
+  // stored" — factually untrue. There is no longer any path that puts an
+  // unscanned file in the bucket.
+  //
+  // In practice this is now unreachable for PDFs: MAX_FILE_SIZE_BYTES equals
+  // SCAN_MAX_BYTES and a PDF passes through normalizeUpload byte-for-byte, so
+  // one that was accepted at intake cannot be too big here. It stays as a
+  // backstop for the image path, which re-encodes *toward* the limit but does
+  // not guarantee landing under it.
   if (storedBytes.length > SCAN_MAX_BYTES) {
-    // Cloudmersive's free tier refuses this outright, so calling it would
-    // just produce a guaranteed 400. Recorded honestly as SKIPPED rather
-    // than quietly stored as if it had been checked. In practice only large
-    // PDFs land here — images are always re-encoded well under the limit.
-    console.warn("[uploadDocument] file too large to scan, storing SKIPPED", {
+    console.warn("[uploadDocument] file too large to scan, rejected", {
       applicationId: application.id,
       requirementCode,
       bytes: storedBytes.length,
       limit: SCAN_MAX_BYTES,
     });
-    scanStatus = "SKIPPED";
-  } else {
-    const scan = await scanFileForViruses(storedBytes, fileName);
+    return {
+      error:
+        "This file could not be security-checked because it is too large. Please upload a smaller version — rescanning at a lower quality is usually enough.",
+    };
+  }
 
-    if (scan.status === "infected") {
-      console.warn("[uploadDocument] infected file rejected", {
-        applicationId: application.id,
-        requirementCode,
-        viruses: scan.viruses,
-      });
-      return {
-        error: "This file did not pass our security scan and was not uploaded.",
-      };
-    }
+  const scan = await scanFileForViruses(storedBytes, fileName);
 
-    if (scan.status === "error") {
-      // A file we chose to scan but couldn't is NOT stored. Only the
-      // known, deliberate too-large case above is allowed through unscanned;
-      // an unexplained scanner failure is not.
-      return {
-        error: scan.retryable
-          ? "Our security scan is temporarily unavailable. Please try again in a few minutes."
-          : "This file could not be security-checked and was not uploaded. Please contact us if this continues.",
-      };
-    }
+  if (scan.status === "infected") {
+    console.warn("[uploadDocument] infected file rejected", {
+      applicationId: application.id,
+      requirementCode,
+      viruses: scan.viruses,
+    });
+    return {
+      error: "This file did not pass our security scan and was not uploaded.",
+    };
+  }
 
-    scanStatus = "CLEAN";
+  if (scan.status === "error") {
+    // A file we could not scan is not stored — no exceptions left.
+    return {
+      error: scan.retryable
+        ? "Our security scan is temporarily unavailable. Please try again in a few minutes."
+        : "This file could not be security-checked and was not uploaded. Please contact us if this continues.",
+    };
   }
 
   // Extension comes from the DETECTED mime type, never from the client's
@@ -333,7 +336,9 @@ async function storeScannedDocument({
         // re-encoding these differ by an order of magnitude, and this column
         // is what R2 storage accounting is read from.
         sizeBytes: storedBytes.length,
-        scanStatus,
+        // Reaching this line means the scan came back clean — every other
+        // outcome returned above.
+        scanStatus: "CLEAN",
         reviewStatus: "PENDING",
       },
       update: {
@@ -341,7 +346,7 @@ async function storeScannedDocument({
         storageKey,
         mimeType: storedMimeType,
         sizeBytes: storedBytes.length,
-        scanStatus,
+        scanStatus: "CLEAN",
         // A replacement is a new file — any note or decision on the old one
         // no longer applies to what the admin is about to see.
         reviewStatus: "PENDING",

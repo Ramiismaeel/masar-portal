@@ -90,6 +90,10 @@ Any page added under `(app)` is protected by construction.
       Vercel both **confirmed 23 Aug 2026** — the nightly purge is live. Remaining follow-through is
       the Datenschutz rewrite (§7 and §11), which is now factually wrong in both directions.
 - [ ] **Phase 12** API docs for the mobile app. (Was "Phase 9".)
+- [ ] **Phase 13** GDPR & security hardening — **the active phase, ahead of Phase 12 in priority.**
+      Three technical gaps first (✅ `SKIPPED` retired 7 Sep 2026 · ☐ admin MFA · ☐ resolve
+      Cloudmersive), then the legal/organisational work that needs a German specialist. See
+      "Phase 13" below.
 
 ## Immediate next steps
 1. **No way to change a decision once made.** `decideApplication` only runs from
@@ -113,6 +117,151 @@ Any page added under `(app)` is protected by construction.
 
 Only two wizard answers drive checklist logic: `instructionLanguage` (Study) and
 `medicalProfession` (Medical). Everything else is information for staff.
+
+## Phase 13 — GDPR & security hardening (planned, Sep 2026)
+
+**Origin.** Rami brought a 24-item compliance checklist (ChatGPT-generated, 6 Sep 2026) asking
+whether it was enough. It is a sound generic skeleton but knows nothing about this codebase: it
+lists as "do later" two things Phase 11 already shipped, and it does not name the one processor
+that is actually the biggest exposure here. This section is that list, reconciled against what the
+code really does. **Do not re-plan the items marked ALREADY DONE.**
+
+**Standing caveat, recorded so no future session forgets it:** everything in 13c is legal work.
+Claude is not a lawyer and cannot sign it off. With Art. 9 (health) *and* Art. 10 (criminal
+convictions) data belonging to a vulnerable group (Syrian visa applicants), an external
+`Fachanwalt für IT-Recht` or an external DPO is not optional polish.
+
+### 13a — The three technical gaps (do these first, in this order)
+
+1. ✅ **DONE (7 Sep 2026) — `scanStatus = SKIPPED` retired; unscannable files are now rejected.**
+   `storeScannedDocument` returns an error instead of storing, so **no code path can put an
+   unscanned file in the bucket any more**. `datenschutz-{en,ar}.tsx`'s claim of *"automatic
+   malware scanning of every uploaded file before it is stored"* is true as written again — that
+   sentence was the actual risk here: an incorrect statement inside a published legal document.
+   - The size guard is kept as a **backstop, not dead code**: unreachable for PDFs (intake cap
+     equals the scan cap and `normalizeUpload` passes PDFs through byte-for-byte), but the image
+     path re-encodes *toward* the limit without guaranteeing it lands under.
+   - `scanStatus` is written as the literal `"CLEAN"` at both upsert sites, since every other
+     outcome now returns before reaching them; the `ScanStatus` type import went with it.
+   - The `SKIPPED` enum value **stays** in `schema.prisma` and in `scan-status.ts` — rows stored
+     under the old behaviour still exist and still need a correct badge. Removing an enum value
+     would need a migration and would break them.
+   - `npm run typecheck` and `npm run lint` clean.
+   - **Verified live in the browser (7 Sep 2026)**, dev server + real Neon `development` DB, all
+     three paths:
+     1. *Client cap* — a 6.7 MB PDF is refused before any request, with the Arabic
+        `tooLargeToSend` copy rendering "3 ميغابايت" from `{limit}`. The `uploadHint` above the
+        checklist reads "حتى 3 ميغابايت" — both numbers flow from the constant, nothing hardcoded.
+     2. *Happy path* — a small PDF went through the full pipeline (ticket → R2 quarantine PUT →
+        finalize → magic bytes → normalize → Cloudmersive → store → upsert) and the checklist
+        moved 2/5 → 3/5.
+     3. *The new server guard itself* — normally unreachable from the UI, since the client cap
+        equals the server cap. Forced by temporarily setting `MAX_FILE_SIZE_BYTES` back to 10 MB
+        while `SCAN_MAX_BYTES` stayed 3 MB, then uploading the 6.7 MB PDF: it reached
+        `storeScannedDocument`, was **rejected with the new message, and no `Document` row and no
+        stored object were created** — the counter stayed at 3/5. Temporary change reverted and
+        confirmed identical to commit `62dfd38`; the test upload was deleted afterwards.
+   - **Known wart, not introduced here:** the rejection message renders in English inside an
+     Arabic UI, because Server Action error strings are still untranslated project-wide (see
+     "i18n" → "What's NOT translated"). The new string follows the existing convention in that
+     file rather than inventing a second one.
+
+2. **MFA on admin accounts.** The threat is concrete and not theoretical: one leaked admin
+   password exposes *every* passport, medical report and criminal-record extract in the system at
+   once. Better Auth 1.7 ships a `twoFactor` plugin (TOTP + backup codes); it adds its own table,
+   so this needs a Prisma migration. **Enforce it in two places, not one** — `admin/layout.tsx`
+   for pages, *and* `requireAdminSession()` in `src/lib/admin.ts`, because this project's own rule
+   is that layouts never run for a direct Server Action call. Open decision: an admin who signs in
+   with Google has Google's 2FA, not ours, and we cannot verify it is switched on — recommendation
+   is to require our own TOTP for `role === "ADMIN"` regardless of provider.
+
+3. **Resolve Cloudmersive** (see the analysis below). This is the decision that unblocks the
+   Datenschutz rewrite, the processor inventory, and a whole branch of the DPIA.
+
+#### The Cloudmersive question, settled properly (7 Sep 2026)
+
+The upload pipeline sends the *file content itself* — passport scans, medical reports,
+Führungszeugnis extracts — to a third-party API. Rami asked whether buying an EU-region plan
+closes the gap. **It does not, on its own.** An EU processing region fixes the location question
+and nothing else:
+
+- A signed **AVV (Art. 28)** is required regardless of region; geography is not a contract.
+- Cloudmersive is US-controlled, so **CLOUD Act / FISA 702** exposure survives EU hosting, and
+  post-*Schrems II* the EDPB treats remote access from a third country as a transfer in itself.
+- That forces a documented **TIA**, and the evidentiary bar for Art. 9 + Art. 10 data is high.
+
+**Recommended: self-hosted ClamAV on an EU VPS (~€4/month, e.g. Hetzner).** The point is not the
+cost — it is that this *removes the processor* rather than documenting it: no scanner AVV, no
+transfer question, no TIA, no DPIA branch, one less name in the Datenschutz. What remains is an
+AVV with the VPS provider, which for a German host is a standard form, and hosting is not content
+processing. Honest trade-off: we then operate it — `freshclam` definition updates, uptime,
+patching — and `clamd` cannot live inside Vercel (no long-running process), so it means a
+separate box, a small authenticated HTTP wrapper, and one more network hop in the upload path.
+Verify in writing before choosing the paid-plan route instead: that an EU region genuinely exists,
+that an AVV is offered, and what their subprocessor list looks like.
+
+### 13b — ALREADY DONE — do not re-plan
+
+| Checklist item | Reality in this repo |
+|---|---|
+| Audit logs (listed 🟠) | ✅ Phase 11 — `AuditLog` + `recordAudit()`, deliberately FK-free so erasing a user cannot erase the record of staff access |
+| Automated deletion (listed 🟢) | ✅ Phase 11 — `account-deletion.ts`, R2 objects removed before the cascade |
+| Automated retention enforcement (listed 🟢) | ✅ Phase 11 — `DOCUMENT_RETENTION_DAYS = 180`, nightly Vercel Cron 03:00, `CRON_SECRET` |
+| File upload security (listed 🟠) | ✅ magic-byte typing, quarantine + IDOR guard, normalize/re-encode, private bucket, presigned-only reads |
+| Access control (listed 🔴) | ✅ layout-as-boundary, `requireAdminSession()` re-check, session-scoped queries, UUID PKs |
+| Retention policy (listed 🔴) | ⚠️ enforced in code; the **written** Löschkonzept does not exist yet → 13c |
+| Legal basis (listed 🔴) | ⚠️ reasoned inside the schema (Art. 6(1)(b); `sensitiveDataConsentAt` as a timestamp, not a boolean; `privacyAcceptedAt` explicitly *not* consent) but never written up as a document → 13c |
+| Data subject requests (listed 🔴) | ⚠️ erasure (Art. 17) shipped; **access/portability (Art. 15/20) missing** — today's ZIP export is staff-facing and was explicitly decided *not* to be Art. 20 → 13d |
+| Encryption (listed 🔴) | ⚠️ in transit + at rest via providers; no application-level encryption of documents under our own key. Deliberate for now — record the reasoning during the DPIA rather than drifting into it |
+
+### 13c — Legal / organisational (cannot be closed in code)
+
+Sequence matters: 1 → 4 → 3 is the real dependency chain; a DPIA without an inventory is theatre.
+
+1. **Data Inventory** — the entry point for everything else. Can be drafted *from the code*
+   (`prisma/schema.prisma`, `src/lib/checklists.ts`, the real processor list) rather than from a
+   generic template, which is both more accurate and cheaper than having a lawyer derive it.
+2. **RoPA / VVT (Art. 30)** — the formal register, built on that inventory.
+3. **DPIA (Art. 35)** — very likely **mandatory** here under Art. 35(3)(b): special-category data
+   at scale plus a vulnerable data-subject group. Must cover the scanner decision from 13a.
+4. **AVV per processor (Art. 28)** — the real list is Vercel, Neon, Cloudflare R2, Resend, Google
+   (OAuth), plus whatever 13a settles for scanning. One signed agreement each, filed.
+5. **Art. 10 legal basis — the sharpest open question.** Criminal-conviction data is *narrower*
+   than Art. 9: processing is restricted to official-authority control or a specific legal
+   authorisation. A private consultancy holding Führungszeugnis extracts needs that basis stated
+   explicitly. Put this question to the specialist first; the answer could change what the Medical
+   and Job-Seeker checklists are allowed to ask for at all.
+6. **Datenschutzerklärung review by a specialist** — and the rewrite already owed from Phase 11
+   (§7 and §11 are wrong in both directions), plus whatever 13a changes about the scanner.
+7. **International transfer review** — Chapter V, per processor, with a TIA wherever a US-
+   controlled company is involved.
+8. **DPO determination (§38 BDSG)** — if the DPIA is mandatory, a DPO very likely is too. Verify;
+   do not assume either way.
+9. **Breach procedure (Art. 33/34)** — a written runbook with the 72-hour clock, who decides, who
+   notifies, and what evidence gets pulled (the audit log is what makes scoping an incident
+   possible at all).
+10. **Staff confidentiality + training** — `Verpflichtung auf das Datengeheimnis` for everyone with
+    an `/admin` account, plus a short documented briefing. Cheap, and auditors always ask.
+
+### 13d — Technical, after 13a
+
+- **Art. 15/20 applicant self-service export** — the applicant's own copy of their data. Distinct
+  from the staff ZIP export, and the honest gap left by Phase 11.
+- **Backup & restore, actually tested** — Neon PITR window on the current plan, and whether R2
+  bucket versioning is on. An accidental or malicious delete today may be unrecoverable, and these
+  are documents applicants often cannot produce a second time. A restore that has never been
+  rehearsed is not a backup.
+- **Infrastructure configuration review — Neon + R2, deferred to its own session at Rami's
+  request (7 Sep 2026).** Deliberately not rushed into this section: it needs a proper walkthrough
+  of Neon (PITR, roles/least privilege, IP allow-listing, branch data exposure — the `development`
+  branch holding real-shaped data is its own question) and R2 (versioning, lifecycle rules beyond
+  the existing `quarantine/` expiry, token scoping, bucket-level access posture). Backend is the
+  area to go slowest in per "How to work with Rami".
+- **Security / penetration testing** — at minimum an authenticated review of the IDOR surface
+  (application ids, quarantine keys, document ids) before any real applicant data lands.
+- **Privacy dashboard** — applicant-facing view of what is held about them; largely falls out of
+  the Art. 15 export once that exists.
+- **Monitoring** — failed-login and admin-action alerting, on top of the audit log.
 
 ## Google OAuth (Phase 9, Aug 2026)
 - **One shared Google OAuth client across all three environments** (Rami's choice over one client
@@ -665,7 +814,7 @@ logging retrofitted onto them later.
 - **`fflate`, not `archiver`.** archiver pulls 9 transitive dependencies and tar support this app
   will never use; fflate has **zero** dependencies and streams. Consistent with the existing
   preference for a raw `fetch` over the Cloudmersive SDK.
-- Streams rather than buffering: 13 documents × a 10 MB cap is ~130 MB, which is a bad thing to
+- Streams rather than buffering: 13 documents × the then-10 MB cap was ~130 MB, which is a bad thing to
   hold in memory on a serverless function. Files are fetched one at a time and pushed into the
   archive as they arrive, so peak memory is roughly one document. Entries use `ZipPassThrough`
   (stored, not deflated) — these are already-compressed JPEGs and PDFs, so deflating them burns CPU
@@ -1266,19 +1415,48 @@ now. Please try again shortly."*
   `serverActions.bodySizeLimit: "12mb"` in `next.config.ts` is powerless — that setting is enforced
   inside a function which never gets invoked. **It does not reproduce locally**: `next dev` has no
   such cap, which is exactly why this passed every localhost test.
-  - `MAX_UPLOAD_REQUEST_BYTES = 4 MB` (headroom under 4.5 for multipart overhead) is now checked
-    **client-side, after shrinking**, so an oversized file produces a real message instead of an
-    uncatchable platform error. `MAX_FILE_SIZE_BYTES` (10 MB) remains the *input* limit — a 10 MB
-    photo is still fine, because what travels is the shrunk few-hundred-KB version.
-  - Note the limits now interact: scan cap 3 MB < transport cap 4 MB. For PDFs (never shrunk) the
+  - `MAX_UPLOAD_REQUEST_BYTES = 4 MB` (headroom under 4.5 for multipart overhead) was checked
+    **client-side, after shrinking**, so an oversized file produced a real message instead of an
+    uncatchable platform error.
+  - Note the limits interacted: scan cap 3 MB < transport cap 4 MB. For PDFs (never shrunk) the
     scan cap binds first, so **if large PDFs are switched from `SKIPPED` to rejected, the Vercel
-    ceiling stops mattering for them entirely.**
+    ceiling stops mattering for them entirely.** That is exactly what happened — see the size-cap
+    decision below.
   - **Resolved by presigned direct-to-R2 upload (24 Aug 2026).** The file no longer travels through
-    a Server Action at all, so the 4.5 MB ceiling is gone.
+    a Server Action at all, so the 4.5 MB ceiling is gone. **Leftovers from the pre-presigned era
+    not yet cleaned up:** `MAX_UPLOAD_REQUEST_BYTES` is now dead code (nothing imports it), and
+    `serverActions.bodySizeLimit: "12mb"` in `next.config.ts` guards a path file bytes no longer
+    take — only small metadata fields do. Both are candidates for deletion.
+
+### Upload size cap tied to the scan cap (7 Sep 2026)
+- **Decision (Rami): every uploaded file must be virus-scanned, no exceptions.** Implemented by
+  capping the input at the scanner's own limit rather than policing two independent numbers:
+  `MAX_FILE_SIZE_BYTES = SCAN_MAX_BYTES` in `src/lib/uploads.ts` — a reference, not a second
+  literal, because the two drifting apart is precisely what created the `SKIPPED` status.
+  Effective limit is now **3 MB**, down from 10 MB.
+- **3 MB, not the 3.5 MB originally proposed.** 3.5 MB is the *measured* Cloudmersive cliff;
+  3 MB is the *documented* one. Betting the "everything gets scanned" guarantee on an undocumented
+  number that the vendor can tighten silently would turn into hard upload failures with no
+  fallback left, once `SKIPPED` is retired.
+- Because PDFs pass through `normalize-upload.ts` untouched, the size chosen *is* the size
+  scanned — which is what makes this cap sufficient rather than merely helpful. Images are still
+  shrunk client- and server-side for speed and scan coverage, independently of this ceiling.
+- **No external compression tool linked**, deliberately, though it was considered: pointing an
+  applicant at a third-party website to compress a passport or a medical report would send exactly
+  the data this whole pipeline protects to an unvetted processor. Users are told to rescan at
+  lower quality instead. If this proves too harsh in practice, the right answer is client-side PDF
+  compression in `shrink-image.ts`'s lane, not an outbound link.
+- Every consumer derives its own display number from the constant (`documents.ts`, the checklist
+  page, `upload-control.tsx`) and both `en.json`/`ar.json` use a `{limit}` placeholder, so no
+  string needed changing in either language. Verified by searching the whole repo.
+- ✅ Paired with the `SKIPPED` → reject change in `storeScannedDocument`, landed the same day
+  (Phase 13a item 1). The cap alone would not have made the Datenschutz sentence true; the two
+  together do.
 
 ### Submit declaration + upload hint (24 Aug 2026)
 - A required checkbox on the submit step, recorded as `Application.privacyAcceptedAt` (migration
-  `add_privacy_accepted_at`), plus a "PDF, JPG or PNG · up to 10 MB" hint above the checklist.
+  `add_privacy_accepted_at`), plus a "PDF, JPG or PNG · up to {limit} MB" hint above the checklist
+  (the number comes from `MAX_FILE_SIZE_BYTES` — 3 MB since 7 Sep 2026, not hardcoded in the copy).
 - **Deliberately a DECLARATION, not a consent tickbox** — this was asked for as "accept to have his
   docs & info", and building it as consent would have *weakened* the legal position. Ordinary
   documents are processed under **Art. 6(1)(b)** (performance of a contract), as Datenschutz §6
@@ -1333,18 +1511,24 @@ Three steps, replacing the single `uploadDocument` form submission:
 2. **Lifecycle rule expiring `quarantine/` after 1 day** — abandoned uploads (closed tab, lost
    connection, failed scan) are real applicant documents. Without expiry they are kept forever:
    a storage leak and a GDPR problem.
-- **Still open:** `datenschutz-{en,ar}.tsx` claim *"automatic malware scanning of every uploaded
-  file before it is stored"*. That was true while unscannable files were rejected; storing
-  `SKIPPED` files makes it **false**. §11 and the Cloudmersive entry must be reworded before this
-  ships. Residual gap after all of the above: a malicious PDF over 3 MB is stored unscanned.
-  Closing it means paying Cloudmersive or self-hosting ClamAV (~€4/mo EU VPS, which would also
-  delete the open DPA/processing-region question by removing the processor).
+- ✅ **CLOSED (7 Sep 2026).** `datenschutz-{en,ar}.tsx`'s claim *"automatic malware scanning of
+  every uploaded file before it is stored"* is accurate again: unscannable files are rejected
+  rather than stored as `SKIPPED`, so the "malicious PDF over 3 MB is stored unscanned" residual
+  gap no longer exists. See Phase 13a item 1.
+  - **Note what this did NOT close:** the Cloudmersive processor question (no confirmed AVV, no
+    confirmed processing region, US-controlled vendor receiving passport/medical/criminal-record
+    file *content*) is untouched by this and is now Phase 13a item 3. Self-hosting ClamAV
+    (~€4/mo EU VPS) remains the recommended answer because it removes the processor rather than
+    documenting it — and would lift the 3 MB cap as a side effect.
+  - The Datenschutz rewrite still owed from Phase 11 (§7 and §11) is **separate** from this
+    sentence and still owed.
 
 ## Uploads (Phase 5, Aug 2026)
 - Pipeline is synchronous and enforced in one Server Action (`src/lib/actions/documents.ts`):
   validate (size/mime) → **normalize** → Cloudmersive scan → R2 `PutObject` → `Document` upsert.
   Nothing is written to R2 and no `Document` row is created unless the scan comes back clean —
-  with the one deliberate exception of `scanStatus = SKIPPED` (see the section above).
+  with **no exceptions since 7 Sep 2026** — the `scanStatus = SKIPPED` carve-out was retired (see
+  "Upload size cap tied to the scan cap" above).
 - **`Document` now has `@@unique([applicationId, requirementCode])`** (migration
   `document_requirement_unique`) — one row per requirement per application, not per upload. A
   re-upload is an **upsert**: `version` increments, `reviewStatus` resets to `PENDING`,
@@ -1357,7 +1541,8 @@ Three steps, replacing the single `uploadDocument` form submission:
   controls render at all). This is the practical reading of the security-rules line below:
   DRAFT is the pre-submission case the rule doesn't explicitly name because nothing has been
   rejected yet.
-- **Policy**: PDF/JPEG/PNG only, 10 MB max (`src/lib/uploads.ts`). Extension in the R2 key comes
+- **Policy**: PDF/JPEG/PNG only, 3 MB max — `MAX_FILE_SIZE_BYTES = SCAN_MAX_BYTES` in
+  `src/lib/uploads.ts`, see "Upload size cap tied to the scan cap" above. Extension in the R2 key comes
   from the validated mime type, never the client's filename — confirmed live: a `.txt` renamed
   through a raw file-input assignment (bypassing the `<input accept>` UX hint entirely) was
   correctly rejected server-side with no `Document` row created.
