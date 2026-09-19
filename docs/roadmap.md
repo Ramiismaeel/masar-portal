@@ -439,10 +439,34 @@ that an AVV is offered, and what their subprocessor list looks like.
 
 Sequence matters: 1 → 4 → 3 is the real dependency chain; a DPIA without an inventory is theatre.
 
-1. **Data Inventory** — the entry point for everything else. Can be drafted *from the code*
-   (`prisma/schema.prisma`, `src/lib/checklists.ts`, the real processor list) rather than from a
-   generic template, which is both more accurate and cheaper than having a lawyer derive it.
-2. **RoPA / VVT (Art. 30)** — the formal register, built on that inventory.
+1. ✅ **Data Inventory + RoPA (Art. 30) — DRAFTED 7 Sep 2026, from the code.**
+   Artifact: **Masar Processing Register** —
+   https://claude.ai/code/artifact/b9a52c5f-4395-4df3-b5d9-54be4bfa8346
+   Structured on Art. 30(1)(a)–(g), with every data category, retention rule and processor traced to
+   `schema.prisma`, `checklists.ts`, `retention.ts` or the deploy config. Legal calls are left open
+   as questions rather than answered. **Give this to the specialist instead of a blank template** —
+   it moves their hour from discovery to judgement.
+
+   Findings the draft surfaced that a generic template would not have:
+   - **Only the Medical category collects special-category data.** Job Seeker, Student and Ausbildung
+     collect none. This narrows the DPIA's scope considerably and is worth stating up front.
+   - **`CRIMINAL_RECORD` is Art. 10, and Art. 9(2)(a) consent does not cover it.** The portal currently
+     collects it under the same `sensitiveDataConsentAt` flag as the medical report. Art. 10 needs
+     official-authority control or a specific legal authorisation — consent is not on that list.
+     **This is the first question for the specialist**, and the answer could change what the Medical
+     checklist may ask for at all.
+   - **The civil registry extract (إخراج قيد) commonly states religion.** If the Syrian extracts
+     collected here do, that is Art. 9 data being processed without having been identified as such —
+     either it joins the explicit-consent scope or it gets redacted on intake. Needs checking against
+     real documents.
+   - **"Biometric photos" are probably NOT Art. 9.** A photo is special-category only when processed
+     *for unique identification*, which this portal does not do. Recorded so nobody over-classifies
+     on the strength of a field name.
+   - **Three erasure gaps**: abandoned Draft/Pending applications are never purged (the clock starts
+     only at Approved/Rejected, so a passport scan in an abandoned draft is kept indefinitely — an
+     Art. 5(1)(e) problem); the retained application row has no stated period (needs a number, six or
+     ten years under §257 HGB / §147 AO); and `audit_logs` has no limit either.
+2. ~~**RoPA / VVT (Art. 30)**~~ — folded into item 1 above; drafted together.
 3. **DPIA (Art. 35)** — very likely **mandatory** here under Art. 35(3)(b): special-category data
    at scale plus a vulnerable data-subject group. Must cover the scanner decision from 13a.
 4. **AVV per processor (Art. 28)** — the real list is Vercel, Neon, Cloudflare R2, Resend, Google
@@ -472,12 +496,50 @@ Sequence matters: 1 → 4 → 3 is the real dependency chain; a DPIA without an 
   bucket versioning is on. An accidental or malicious delete today may be unrecoverable, and these
   are documents applicants often cannot produce a second time. A restore that has never been
   rehearsed is not a backup.
-- **Infrastructure configuration review — Neon + R2, deferred to its own session at Rami's
-  request (7 Sep 2026).** Deliberately not rushed into this section: it needs a proper walkthrough
-  of Neon (PITR, roles/least privilege, IP allow-listing, branch data exposure — the `development`
-  branch holding real-shaped data is its own question) and R2 (versioning, lifecycle rules beyond
-  the existing `quarantine/` expiry, token scoping, bucket-level access posture). Backend is the
-  area to go slowest in per "How to work with Rami".
+- **Infrastructure review — Neon + R2 — INSPECTED 7 Sep 2026.** Done read-only with the app's own
+  credentials; no dashboard was opened (those need Rami's login). Full step-by-step runbook
+  published as an artifact: **Neon & R2 Hardening** —
+  https://claude.ai/code/artifact/24edc0a0-049e-42d8-8cad-c332a29d380e
+
+  **Verified correct, do not re-litigate:**
+  - Both connection strings use `sslmode=verify-full&channel_binding=require` — stricter than the
+    `require` most projects settle for; verifies certificate *and* hostname, and binds the session.
+    (A first read of `pg_stat_ssl` showed `ssl=false` and nearly became a false alarm — that row
+    describes the pooler↔Postgres hop, not the client connection. The connection string is the
+    authoritative answer.)
+  - Endpoint is `eu-central-1`; PostgreSQL 17.11; pooled host for the app, direct for the CLI.
+  - **R2 bucket is not publicly readable** — tested with an unsigned GET against a real document
+    key, which returned 400 rather than the file.
+  - **The R2 API token is already least-privilege**: every bucket-level read (versioning,
+    lifecycle, CORS, encryption) returned `AccessDenied`. Objects yes, administration no. This is
+    the desired posture *and* the reason those four items need the dashboard.
+  - No stranded `quarantine/` objects: all 20 stored objects are under `applications/`.
+
+  **Open, in severity order (details and exact steps in the artifact):**
+  1. **The app connects as `neondb_owner`** — full DDL on every table. A leaked `DATABASE_URL`
+     could `DROP`/`TRUNCATE`, not merely read. Fix maps cleanly onto the existing two-URL split:
+     a `masar_app` role with row privileges only for `DATABASE_URL`, owner retained on
+     `DIRECT_URL` for migrations, plus `ALTER DEFAULT PRIVILEGES` so future migrations stay
+     covered. SQL is in the artifact. Test on preview — a missing grant fails at runtime, not at
+     build, so CI will not catch it.
+  2. ~~**Real personal data in the `development` database**~~ — **ANSWERED 7 Sep 2026: all of it is
+     synthetic, from accounts Rami owns.** 3 users, 5 applications, 20 documents and 17 audit rows
+     exist in dev, but none of it belongs to a third party, so there is **no exposure and no RoPA
+     inaccuracy today**. Downgraded from "act now" to a rule to lock in *before* the first real
+     applicant: dev and preview get synthetic data only, and preview should have its own branch and
+     bucket so a preview URL can never reach production-shaped data. Worth re-checking whenever a
+     production dump is copied anywhere for debugging — that is how this usually goes wrong.
+  3. **R2 object versioning** — status unknown, needs the dashboard. Three code paths delete
+     objects deliberately (replace, delete, retention purge); versioning is what turns a wrong key
+     into an inconvenience instead of a permanent loss of papers an applicant may not be able to
+     obtain again. Must be paired with a non-current-version expiry rule, or it silently
+     contradicts `DOCUMENT_RETENTION_DAYS = 180`.
+  4. **Neon history/PITR window** — plan-dependent, unknown. Rehearse one restore and write down
+     how long it took; an unrehearsed restore is not a backup.
+  5. **`quarantine/` lifecycle rule and CORS origin list** — both unreadable with the current
+     token, both must be confirmed on production as well as dev.
+  6. **Neon IP Allow** — check availability; likely impractical with Vercel's non-static egress.
+     Record the decision either way so it is not rediscovered every few months.
 - **Security / penetration testing** — at minimum an authenticated review of the IDOR surface
   (application ids, quarantine keys, document ids) before any real applicant data lands.
 - **Privacy dashboard** — applicant-facing view of what is held about them; largely falls out of
